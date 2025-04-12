@@ -1,3 +1,9 @@
+**/*.png
+**/*.jpg
+**/*.mp4
+
+# ===================== Default ignores =====================
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
