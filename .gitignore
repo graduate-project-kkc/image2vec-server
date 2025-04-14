@@ -1,8 +1,4 @@
-**/*.png
-**/*.jpg
-**/*.mp4
-
-# ===================== Default ignores =====================
+test_images/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
