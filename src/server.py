@@ -5,7 +5,7 @@ app = FastAPI()
 
 @app.get("/")
 def read_root():
-    return {"data": "Hello, world!"}
+    return {"data": "Hello, world! 202012364"}
 
 @app.get("/echo/{string}")
 def echo_msg(string: str, q: Union[str, None] = None):
