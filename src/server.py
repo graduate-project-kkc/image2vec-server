@@ -1,16 +1,25 @@
 from typing import Union
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, UploadFile, File
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+
+from .core import Model
 
 app = FastAPI()
+model = Model()
+templates = Jinja2Templates(directory="src/templates")
 
-@app.get("/")
-def read_root():
-    return {"data": "Hello, world! 202012364"}
+@app.get("/", response_class=HTMLResponse)
+def main_page(request: Request):
+    return templates.TemplateResponse(request=request, name="main.html")
 
-@app.get("/echo/{string}")
-def echo_msg(string: str, q: Union[str, None] = None):
-    return {"input": string, "q": q}
+@app.post("/feature/image/")
+def get_feature_of_image(request: Request, image_file: UploadFile):
+    image = image_file.file.read()
+    feature = model.get_image_vector(image)
+    return {"image_filename": image_file.filename, "data": feature.flatten().tolist()}
 
-@app.get("/items/{item_id}")
-def read_item(item_id: int, q: Union[str, None] = None):
-    return {"item_id": item_id, "q": q}
+@app.post("/feature/text/")
+def get_feature_of_text(request: Request, text: str):
+    feature = model.get_text_vector(text)
+    return {"query": text, "data": feature.flatten().tolist()}
