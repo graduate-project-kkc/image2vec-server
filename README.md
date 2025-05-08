@@ -1,5 +1,4 @@
 # ~~image2vec-server~~
-This branch is for code of network service.
 
 ## Running in container (using docker, offhand)
 
