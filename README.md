@@ -1,4 +1,4 @@
-# ~~image2vec-server~~
+# image2vec-server
 
 ## Running in container (using docker, offhand)
 
