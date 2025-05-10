@@ -1,0 +1,12 @@
+<html>
+    <body>
+        <h3>{{ query }}</h3><br>
+        <button onclick="location.href='/';">Go back</button><br>
+        {% for image in images %}
+        <h2>#{{ image[0] }} - {{ image[1] }}</h2>
+        (score = {{ image[2] }})<br>
+        <img height="400px" width="auto" src="data:image/jpeg;base64,{{ image[3] | safe }}"><br>
+        {% endfor %}
+        <br><button onclick="location.href='/';">Go back</button>
+    </body>
+</html>
