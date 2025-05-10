@@ -42,13 +42,32 @@ def search(request: Request, text: str):
         result.append((i+1, image_filename, score, image_base64_encoded))
     return templates.TemplateResponse(request=request, name="search.html", context={"query": text, "images": result})
 
-@app.post("/feature/image/")
-def get_feature_of_image(request: Request, image_file: UploadFile):
-    image = image_file.file.read()
-    feature = model.get_image_vector(image)
-    return {"image_filename": image_file.filename, "data": feature.flatten().tolist()}
+@app.get("/api/count")
+def api_get_uploaded_images():
+    return JSONResponse(content={"count": db.count()})
 
-@app.post("/feature/text/")
-def get_feature_of_text(request: Request, text: str):
+@app.post("/api/upload")
+def api_upload_image(image: UploadFile):
+    filename = image.filename
+    data = image.file.read()
+    if len(data) == 0:
+        return JSONResponse(content={"result": "failed", "error_msg": "Empty file"})
+    vector = model.get_image_vector(data)
+    try:
+        db.push(filename, data, vector)
+    except ValueError as e:
+        return JSONResponse(content={"result": "failed", "error_msg": e.args})
+    return JSONResponse(content={"result": "success"})
+
+@app.get("/api/search")
+def api_search(text: str):
     feature = model.get_text_vector(text)
-    return {"query": text, "data": feature.flatten().tolist()}
+    image_indices = db.search(feature)
+    result = []
+    for _, idx in image_indices:
+        data = db.get(idx)
+        filename = data["name"]
+        content = data["data"]
+        content_base64 = base64.b64encode(content).decode("utf-8")
+        result.append((filename, content_base64))
+    return JSONResponse(content=result)
