@@ -28,8 +28,8 @@ def test_pinecone_db():
         vec_query = vec1.clone()  # vec1과 유사한 벡터로 검색 테스트
 
         # 데이터 push
-        idx1 = db.push("file1.jpg", b"fake-image-data-1", vec1)
-        idx2 = db.push("file2.jpg", b"fake-image-data-2", vec2)
+        idx1 = db.push("file7.jpg", b"fake-image-data-1", vec1)
+        idx2 = db.push("file8.jpg", b"fake-image-data-2", vec2)
 
         print(f"Pushed file1 at index {idx1}, file2 at index {idx2}")
 

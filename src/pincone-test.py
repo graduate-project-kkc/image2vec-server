@@ -1,6 +1,12 @@
 from pinecone import Pinecone, ServerlessSpec
+from dotenv import load_dotenv
+import os
 
-pc = Pinecone(api_key="pcsk_3QPVVP_A12nXysSbNQVqxaAkQcyMe8M8Rm7QwaWUaiHZSeUTGLVCUYw4dfsH6XMaMbp6at")
+
+load_dotenv(dotenv_path='.env.local')  # .env 파일 로드
+# 설정값
+API_KEY = os.getenv("API_KEY")
+pc = Pinecone(API_KEY)
 index_name = "quickstart"
 
 if not pc.has_index(index_name):

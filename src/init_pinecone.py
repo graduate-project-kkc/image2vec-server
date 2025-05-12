@@ -1,7 +1,10 @@
 from pinecone import Pinecone, ServerlessSpec
+from dotenv import load_dotenv
+import os
 
+load_dotenv(dotenv_path='.env.local')  # .env 파일 로드
 # 설정값
-API_KEY = "pcsk_3QPVVP_A12nXysSbNQVqxaAkQcyMe8M8Rm7QwaWUaiHZSeUTGLVCUYw4dfsH6XMaMbp6at"
+API_KEY = os.getenv("API_KEY")
 ENVIRONMENT = "your-environment"
 INDEX_NAME = "clip768"
 DIMENSION = 768  # 예: CLIP, BERT 등의 임베딩 차원
