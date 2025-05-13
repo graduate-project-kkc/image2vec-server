@@ -1,25 +1,73 @@
-from typing import Union
-from fastapi import FastAPI, Request, UploadFile, File
-from fastapi.responses import HTMLResponse
+import base64
+from fastapi import FastAPI, Request, UploadFile, status
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from .core import Model
+from .core import Model, FakeDB
 
 app = FastAPI()
-model = Model()
 templates = Jinja2Templates(directory="src/templates")
+
+model = Model()
+db = FakeDB()
 
 @app.get("/", response_class=HTMLResponse)
 def main_page(request: Request):
-    return templates.TemplateResponse(request=request, name="main.html")
+    return templates.TemplateResponse(request=request, name="main.html", context={"n_imgs": db.count()})
 
-@app.post("/feature/image/")
-def get_feature_of_image(request: Request, image_file: UploadFile):
-    image = image_file.file.read()
-    feature = model.get_image_vector(image)
-    return {"image_filename": image_file.filename, "data": feature.flatten().tolist()}
+@app.post("/upload", response_class=HTMLResponse)
+def upload_image(request: Request, image_file: UploadFile):
+    filename = image_file.filename
+    data = image_file.file.read()
+    if len(data) == 0:
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    vector = model.get_image_vector(data)
+    try:
+        db.push(filename, data, vector)
+    except ValueError as e:
+        return templates.TemplateResponse(request=request, name="upload.html", context={"result": f"Error - {e.args}"})
+    return templates.TemplateResponse(request=request, name="upload.html", context={"result": "success"})
 
-@app.post("/feature/text/")
-def get_feature_of_text(request: Request, text: str):
+@app.get("/search", response_class=HTMLResponse)
+def search(request: Request, text: str):
     feature = model.get_text_vector(text)
-    return {"query": text, "data": feature.flatten().tolist()}
+    image_indices = db.search(feature)
+    result = []
+    for i in range(min(5, len(image_indices))):
+        score = image_indices[i][0].item()
+        image_data = db.get(image_indices[i][1])
+        image_filename = image_data['name']
+        image_content = image_data['data']
+        image_base64_encoded = base64.b64encode(image_content).decode("utf-8")
+        result.append((i+1, image_filename, score, image_base64_encoded))
+    return templates.TemplateResponse(request=request, name="search.html", context={"query": text, "images": result})
+
+@app.get("/api/count")
+def api_get_uploaded_images():
+    return JSONResponse(content={"count": db.count()})
+
+@app.post("/api/upload")
+def api_upload_image(image: UploadFile):
+    filename = image.filename
+    data = image.file.read()
+    if len(data) == 0:
+        return JSONResponse(content={"result": "failed", "error_msg": "Empty file"})
+    vector = model.get_image_vector(data)
+    try:
+        db.push(filename, data, vector)
+    except ValueError as e:
+        return JSONResponse(content={"result": "failed", "error_msg": e.args})
+    return JSONResponse(content={"result": "success"})
+
+@app.get("/api/search")
+def api_search(text: str):
+    feature = model.get_text_vector(text)
+    image_indices = db.search(feature)
+    result = []
+    for _, idx in image_indices:
+        data = db.get(idx)
+        filename = data["name"]
+        content = data["data"]
+        content_base64 = base64.b64encode(content).decode("utf-8")
+        result.append((filename, content_base64))
+    return JSONResponse(content=result)

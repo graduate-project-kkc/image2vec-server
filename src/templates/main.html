@@ -1,12 +1,13 @@
 <html>
     <body>
-        <form method="post" action="/feature/image/" enctype="multipart/form-data">
-            File : <input type="file" accept="image/*" name="image_file">
-            <input type="submit" value="Send file">
+        {{ n_imgs }} image(s) loaded.<br><br>
+        <form method="post" action="/upload" enctype="multipart/form-data">
+            File : <input type="file" accept="image/jpeg" name="image_file">
+            <input type="submit" value="Upload image (JPEG)">
         </form>
-        <form method="post" action="/feature/text/">
+        <form method="get" action="/search">
             Query : <input type="text" name="text">
-            <input type="submit" value="Send query">
+            <input type="submit" value="Search">
         </form>
     </body>
 </html>
