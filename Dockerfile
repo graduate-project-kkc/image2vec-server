@@ -4,6 +4,7 @@ COPY ./requirements.txt ./
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
 COPY ./src ./src
 COPY ./cache ./cache
+COPY ./.env.local ./
 ENV HF_HOME=./cache
 
 EXPOSE 3000
