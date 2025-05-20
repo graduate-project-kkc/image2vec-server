@@ -8,8 +8,8 @@ CPU = "cpu"
 
 class Model:
     def __init__(self):
-        self.model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14").to(GPU)
-        self.processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
+        self.model = CLIPModel.from_pretrained("./model", local_files_only=True).to(GPU)
+        self.processor = CLIPProcessor.from_pretrained("./model", local_files_only=True)
 
     def get_image_vector(self, image_data: bytes):
         # image_data should be bytes gotten by reading a raw file, not using PIL or something.

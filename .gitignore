@@ -1,5 +1,6 @@
 test_images/
-cache/
+clip-vit-large-patch14/
+model/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
