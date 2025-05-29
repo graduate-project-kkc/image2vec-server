@@ -40,7 +40,8 @@ class PineconeDB():
     def count(self):
         return self.index.describe_index_stats()['total_vector_count']
 
-    def push(self, filename: str, data: bytes, feature_vector: torch.FloatTensor):
+    # def push(self, filename: str, data: bytes, feature_vector: torch.FloatTensor):
+    def push(self, filename: str, feature_vector: torch.FloatTensor):
         if feature_vector.size(dim=1) != 768:
             raise ValueError("The given feature vector's shape is incorrect.")
 
