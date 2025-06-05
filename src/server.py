@@ -24,7 +24,7 @@ def api_upload_image(filename: str, image_id: str):
     with requests.get(s3_URL + image_id) as response:
         if response.status_code != 200:
             return JSONResponse(content={"result": "failed", "error_msg": "Error on communicating to image server."})
-        data = response.content()
+        data = response.content
     vector = model.get_image_vector(data)
     try:
         db.push(filename, vector)
