@@ -16,8 +16,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - name: Make API key file for pinecone DB
-        run: echo API_KEY="${{ secrets.PINECONE_API_KEY }}" > ./.env.local
+      - name: Make env file for pinecone DB
+        run: |
+          touch ./.env.local
+          echo API_KEY="${{ secrets.PINECONE_API_KEY }}" >> ./.env.local
+          echo S3_URL="${{ secrets.S3_URL }}" >> ./.env.local
 
       - name: Build the Docker image
         run: docker build . --file Dockerfile --tag ${{ secrets.DOCKER_TAG }}:latest
