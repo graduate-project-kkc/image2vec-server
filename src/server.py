@@ -20,6 +20,7 @@ def upload_to_db(image_id):
     with requests.get(s3_URL + image_id) as response:
         if response.status_code != 200:
             result = {"status": "failed", "error_msg": "Error on communicating to image server."}
+            print("Upload to db :", result)
             return result
         data = response.content
     vector = model.get_image_vector(data)
@@ -27,8 +28,10 @@ def upload_to_db(image_id):
         db.push(image_id, vector)
     except ValueError as e:
         result = {"status": "failed", "error_msg": f"{type(e)}: {e}"}
+        print("Upload to db :", result)
         return result
     result = {"status": "success"}
+    print("Upload to db :", result)
     return result
 
 @app.get("/api/count")
