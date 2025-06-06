@@ -14,6 +14,7 @@ model = Model()
 db = PineconeDB(API_KEY, ENVIRONMENT, INDEX_NAME)
 
 s3_URL = os.getenv("S3_URL")
+SPECIAL_KEY = os.getenv("SPECIAL_KEY")  # Temporary authentication key
 
 @app.get("/api/count")
 def api_get_uploaded_images():
