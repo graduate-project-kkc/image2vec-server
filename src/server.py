@@ -30,19 +30,29 @@ def api_upload_image(item: UploadItem):
     image_id = item.image_id
     with requests.get(s3_URL + image_id) as response:
         if response.status_code != 200:
-            return JSONResponse(content={"result": "failed", "error_msg": "Error on communicating to image server."})
+            resp_json = {"status": "failed", "error_msg": "Error on communicating to image server."}
+            print("Response :", resp_json)
+            return JSONResponse(content=resp_json)
         data = response.content
     vector = model.get_image_vector(data)
     try:
         db.push(image_id, vector)
     except ValueError as e:
-        return JSONResponse(content={"result": "failed", "error_msg": f"{type(e)}: {e}"})
-    return JSONResponse(content={"result": "success"})
+        resp_json = {"status": "failed", "error_msg": f"{type(e)}: {e}"}
+        print("Response :", resp_json)
+        return JSONResponse(content=resp_json)
+    resp_json = {"status": "success"}
+    print("Response :", resp_json)
+    return JSONResponse(content=resp_json)
 
 @app.get("/api/search")
 def api_search(query: str):
     try:
         feature = model.get_text_vector(query)
-        return JSONResponse(content={"status": "success", "vector": feature.tolist()})
+        resp_json = {"status": "success", "vector": feature.reshape((-1,)).tolist()}
+        print("Response :", resp_json)
+        return JSONResponse(content=resp_json)
     except Exception as e:
-        return JSONResponse(content={"status": "failed", "error_msg": f"{type(e)}: {e}"})
+        resp_json = {"status": "failed", "error_msg": f"{type(e)}: {e}"}
+        print("Response :", resp_json)
+        return JSONResponse(content=resp_json)
