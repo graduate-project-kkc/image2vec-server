@@ -37,8 +37,6 @@ def api_upload_image(filename: str, image_id: str):
 def api_search(text: str):
     try:
         feature = model.get_text_vector(text)
-        image_indices = db.search(feature)
-        result = [x[1] for x in image_indices]
-        return JSONResponse(content={"status": "success", "image_ids": result})
+        return JSONResponse(content={"status": "success", "vector": feature.tolist()})
     except Exception as e:
         return JSONResponse(content={"status": "failed", "error_msg": f"{type(e)}: {e}"})
