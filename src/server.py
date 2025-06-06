@@ -19,7 +19,7 @@ SPECIAL_KEY = os.getenv("SPECIAL_KEY")  # Temporary authentication key
 def upload_to_db(image_id):
     with requests.get(s3_URL + image_id) as response:
         if response.status_code != 200:
-            result = {"image_id": image_id, "status": "failed", "error_msg": "Error on communicating to image server."}
+            result = {"image_id": image_id, "status": "failed", "error_msg": f"Error on communicating to image server - {response.status_code}"}
             print("Upload to db :", result)
             return result
         data = response.content
