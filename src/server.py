@@ -1,10 +1,8 @@
 import os
 import requests
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Body
 from fastapi.responses import JSONResponse
-
-from pydantic import BaseModel
 
 from .core import Model
 from .pincone_db import PineconeDB, API_KEY, ENVIRONMENT, INDEX_NAME
@@ -18,31 +16,32 @@ db = PineconeDB(API_KEY, ENVIRONMENT, INDEX_NAME)
 s3_URL = os.getenv("S3_URL")
 SPECIAL_KEY = os.getenv("SPECIAL_KEY")  # Temporary authentication key
 
-class UploadItem(BaseModel):
-    image_id: str
+def upload_to_db(image_id):
+    with requests.get(s3_URL + image_id) as response:
+        if response.status_code != 200:
+            result = {"status": "failed", "error_msg": "Error on communicating to image server."}
+            return result
+        data = response.content
+    vector = model.get_image_vector(data)
+    try:
+        db.push(image_id, vector)
+    except ValueError as e:
+        result = {"status": "failed", "error_msg": f"{type(e)}: {e}"}
+        return result
+    result = {"status": "success"}
+    return result
 
 @app.get("/api/count")
 def api_get_uploaded_images():
     return JSONResponse(content={"count": db.count()})
 
 @app.post("/api/upload")
-def api_upload_image(item: UploadItem):
-    image_id = item.image_id
-    with requests.get(s3_URL + image_id) as response:
-        if response.status_code != 200:
-            resp_json = {"status": "failed", "error_msg": "Error on communicating to image server."}
-            print("Response :", resp_json)
-            return JSONResponse(content=resp_json)
-        data = response.content
-    vector = model.get_image_vector(data)
-    try:
-        db.push(image_id, vector)
-    except ValueError as e:
-        resp_json = {"status": "failed", "error_msg": f"{type(e)}: {e}"}
-        print("Response :", resp_json)
-        return JSONResponse(content=resp_json)
-    resp_json = {"status": "success"}
-    print("Response :", resp_json)
+def api_upload_image(image_ids: list[str] = Body(...)):
+    resp_json = {"status": {"success": 0, "failed": 0}, "results": []}
+    for image_id in image_ids:
+        result = upload_to_db(image_id)
+        resp_json["results"].append(result)
+        resp_json["status"][result["status"]] += 1
     return JSONResponse(content=resp_json)
 
 @app.get("/api/search")
