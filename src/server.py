@@ -49,8 +49,9 @@ def api_upload_image(item: UploadItem):
 def api_search(query: str):
     try:
         feature = model.get_text_vector(query)
-        resp_json = {"status": "success", "vector": feature.reshape((-1,)).tolist()}
-        print("Response :", resp_json)
+        feature = feature.reshape((-1,)).tolist()
+        resp_json = {"status": "success", "vector": feature}
+        print(f"Response : {{\"status\": \"success\", \"vector\": [{feature[0]}, {feature[1]}, {feature[2]}, ..., {feature[-1]}]}}")
         return JSONResponse(content=resp_json)
     except Exception as e:
         resp_json = {"status": "failed", "error_msg": f"{type(e)}: {e}"}
