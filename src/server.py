@@ -58,7 +58,7 @@ def upload_to_db(image_id):
 def api_get_uploaded_images():
     logger.info("====== /api/count ======", extra={"color_message": f"====== {click.style('/api/count', bold=True)} ======"})
     content = {"count": db.count()}
-    logger.info(f"VecDB count = {content["count"]}")
+    logger.info(f"VecDB count = {content['count']}")
     return JSONResponse(content=content)
 
 @app.post("/api/upload")
@@ -71,11 +71,11 @@ def api_upload_image(image_ids: list[str] = Body(...)):
         result = upload_to_db(image_id)
         dtime = time.time() - dtime
         ttime += dtime
-        logger.info(f"Uploaded {image_id} to VecDB : {result.get("error_msg", "Success")} ({dtime:.3f} seconds)")
+        logger.info(f"Uploaded {image_id} to VecDB : {result.get('error_msg', 'Success')} ({dtime:.3f} seconds)")
         resp_json["results"].append(result)
         resp_json["status"][result["status"]] += 1
     logger.info(f"Uploaded images to VecDB : "
-                f"Total {resp_json["status"]["success"]} success, {resp_json["status"]["failed"]} failed"
+                f"Total {resp_json['status']['success']} success, {resp_json['status']['failed']} failed"
                 f"({ttime:.3f} seconds)")
     return JSONResponse(content=resp_json)
 
@@ -93,5 +93,5 @@ def api_search(query: str):
         return JSONResponse(content=resp_json)
     except Exception as e:
         resp_json = {"status": "failed", "error_msg": f"{type(e)}: {e}"}
-        logger.info(f"Response text vector : \"{query}\" => (Failed) {resp_json["error_msg"]}")
+        logger.info(f"Response text vector : \"{query}\" => (Failed) {resp_json['error_msg']}")
         return JSONResponse(content=resp_json)
