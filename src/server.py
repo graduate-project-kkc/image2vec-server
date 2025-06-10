@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
     stream_handler.setFormatter(DefaultFormatter(
         "[{asctime}]  {levelprefix}{message}", style='{', use_colors=True
     ))
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
     logger.addHandler(stream_handler)
     
     yield
