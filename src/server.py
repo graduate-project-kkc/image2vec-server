@@ -1,5 +1,5 @@
 import os
-import requests
+import aiohttp
 import logging
 import click
 
@@ -43,13 +43,14 @@ db = PineconeDB(API_KEY, ENVIRONMENT, INDEX_NAME)
 s3_URL = os.getenv("S3_URL")
 SPECIAL_KEY = os.getenv("SPECIAL_KEY")  # Temporary authentication key
 
-def upload_to_db(image_id):
+async def upload_to_db(image_id):
     timer = SimpleTimer()
     timer.start()
-    with requests.get(s3_URL + image_id) as response:
-        if response.status_code != 200:
-            return {"status": "failed", "error_msg": "Error on communicating to image server."}
-        data = response.content
+    async with aiohttp.ClientSession() as session:
+        async with session.get(s3_URL + image_id) as response:
+            if response.status != 200:
+                return {"status": "failed", "error_msg": "Error on communicating to image server."}
+            data = await response.read()
     elapsed = timer.stop()
     logger.info(f"[Upload] Loaded data of {image_id} from ImgDB ({elapsed:.3f} sec)")
     timer.start()
@@ -66,14 +67,14 @@ def upload_to_db(image_id):
     return {"status": "success"}
 
 @app.get("/api/count")
-def api_get_uploaded_images():
+async def api_get_uploaded_images():
     logger.info("====== /api/count ======", extra={"color_message": f"====== {click.style('/api/count', bold=True)} ======"})
     content = {"count": db.count()}
     logger.info(f"VecDB count = {content['count']}")
     return JSONResponse(content=content)
 
 @app.post("/api/upload")
-def api_upload_image(image_ids: list[str] = Body(...)):
+async def api_upload_image(image_ids: list[str] = Body(...)):
     logger.info("====== /api/upload ======", extra={"color_message": f"====== {click.style('/api/upload', bold=True)} ======"})
     resp_json = {"status": {"success": 0, "failed": 0}, "results": []}
     timer = SimpleTimer()
@@ -81,7 +82,7 @@ def api_upload_image(image_ids: list[str] = Body(...)):
     subtimer = SimpleTimer()
     for image_id in image_ids:
         subtimer.start()
-        result = upload_to_db(image_id)
+        result = await upload_to_db(image_id)
         elapsed = subtimer.stop()
         logger.info(f"Uploaded {image_id} to VecDB : {result.get('error_msg', 'Success')} ({elapsed:.3f} sec)")
         resp_json["results"].append(result)
@@ -93,7 +94,7 @@ def api_upload_image(image_ids: list[str] = Body(...)):
     return JSONResponse(content=resp_json)
 
 @app.get("/api/search")
-def api_search(query: str):
+async def api_search(query: str):
     logger.info("====== /api/search ======", extra={"color_message": f"====== {click.style('/api/search', bold=True)} ======"})
     try:
         timer = SimpleTimer()
