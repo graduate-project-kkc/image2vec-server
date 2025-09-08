@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-model = Model()
+model = Model(logger)
 
 db = PineconeDB(API_KEY, ENVIRONMENT, INDEX_NAME)
 
