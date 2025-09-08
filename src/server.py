@@ -1,6 +1,5 @@
 import os
 import requests
-import time
 import logging
 import click
 
@@ -12,17 +11,7 @@ from fastapi.responses import JSONResponse
 
 from .core import Model
 from .pincone_db import PineconeDB, API_KEY, ENVIRONMENT, INDEX_NAME
-
-
-class SimpleTimer:
-    def __init__(self):
-        self.t = 0
-    
-    def start(self):
-        self.t = time.time()
-    
-    def stop(self):
-        return time.time() - self.t
+from .timer import SimpleTimer
 
 
 logger = logging.getLogger()
