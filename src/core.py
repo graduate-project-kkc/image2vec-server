@@ -7,6 +7,8 @@ from logging import Logger
 
 from .timer import SimpleTimer
 
+Image.MAX_IMAGE_PIXELS = None
+
 GPU = "cuda" if torch.cuda.is_available() else "cpu"
 CPU = "cpu"
 
