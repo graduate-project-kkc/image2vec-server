@@ -1,6 +1,7 @@
 import os
 import random
 import requests
+import time
 from multiprocessing.pool import ThreadPool
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 
@@ -31,13 +32,14 @@ wa = 디스크 등 IO작업으로 CPU가 대기하는 비율
 ENDPOINT_SEARCH = "http://52.79.227.178:8080/api/search?query="
 ENDPOINT_UPLOAD = "http://52.79.227.178:8080/api/images"
 
-random.seed(1226)
+# random.seed(1226)
 
 TEST_IMG_DIR = os.path.join(".", "test_images", "ToBeUploaded2")
 test_img_list = os.listdir(TEST_IMG_DIR)
 for excluded_img in ["20250902_133843.jpg", "20250510_151332.jpg", "20250510_151333.jpg", 
                      "20250510_151335.jpg", "20250510_171121.jpg", "20250425_122634.jpg"]:
     test_img_list.remove(excluded_img)
+test_img_list = list(filter(lambda x: os.path.getsize(os.path.join(TEST_IMG_DIR, x)) <= 10*1024*1024, test_img_list))
 random.shuffle(test_img_list)
 test_img_iter = iter(test_img_list)
 
@@ -72,9 +74,9 @@ def search(query: str):
         timer.start()
         with requests.Session() as session:
             response = session.get(ENDPOINT_SEARCH + query)
-            return my_task_id, query, timer.stop(), response.status_code, response.content.decode('utf-8')
+            return my_task_id, query, timer.t, timer.stop(), response.status_code, response.content.decode('utf-8')
     except BaseException as e:
-        return my_task_id, query, timer.stop(), -1, f"{e.__class__.__name__}: {e}"
+        return my_task_id, query, timer.t, timer.stop(), -1, f"{e.__class__.__name__}: {e}"
 
 def upload(imgs):
     try:
@@ -86,15 +88,15 @@ def upload(imgs):
         data = MultipartEncoder([("files", (img, open(os.path.join(TEST_IMG_DIR, img), "rb"), "image/jpeg")) for img in imgs])
         with requests.Session() as session:
             response = session.post(ENDPOINT_UPLOAD, data=data, headers={"Content-Type": data.content_type})
-            return my_task_id, imgs, timer.stop(), response.status_code, response.content.decode('utf-8')
+            return my_task_id, imgs, timer.t, timer.stop(), response.status_code, response.content.decode('utf-8')
     except BaseException as e:
-        return my_task_id, imgs, 0, -1, f"{e.__class__.__name__}: {e}"
+        return my_task_id, imgs, timer.t, 0, -1, f"{e.__class__.__name__}: {e}"
 
 timer = SimpleTimer()
 
 def callback(args):
-    task_id, data, elapsed_time, status_code, content = args
-    print(f"Task #{task_id} {data} : {elapsed_time:.4f} sec / {status_code} / {content if len(content) < 150 else content[:150] + '...'}")
+    task_id, data, start_timestamp, elapsed_time, status_code, content = args
+    print(f"Task #{task_id} / {data} / {start_timestamp} / {elapsed_time:.4f} sec / {status_code} / {content if len(content) < 150 else content[:150] + '...'}")
 
 print("""
 시나리오 1
@@ -105,6 +107,8 @@ with ThreadPool(processes=1) as pool:
     img = next(test_img_iter)
     pool.apply_async(upload, ([img],), callback=callback).wait()
 
+time.sleep(5)
+
 print("""
 시나리오 2
 - 텍스트 검색 1번
@@ -113,6 +117,8 @@ print("""
 with ThreadPool(processes=1) as pool:
     text = next(text_iter)
     pool.apply_async(search, (text,), callback=callback).wait()
+
+time.sleep(5)
 
 print("""
 시나리오 3
@@ -123,6 +129,8 @@ print("""
 with ThreadPool(processes=1) as pool:
     text = next(text_iter)
     pool.apply_async(search, (text,), callback=callback).wait()
+
+time.sleep(5)
 
 print("""
 시나리오 4
@@ -137,6 +145,8 @@ with ThreadPool(processes=1) as pool:
     text = next(text_iter)
     pool.apply_async(search, (text,), callback=callback).wait()
 
+time.sleep(5)
+
 print("""
 시나리오 5
 - 사진을 연속으로 5장 업로드
@@ -149,6 +159,8 @@ with ThreadPool(processes=5) as pool:
         async_results.append(pool.apply_async(upload, ([img],), callback=callback))
     for r in async_results:
         r.wait()
+
+time.sleep(5)
 
 print("""
 시나리오 6
@@ -163,6 +175,8 @@ with ThreadPool(processes=1) as pool:
         pool.apply_async(search, (text,), callback=callback).wait()
         img = next(test_img_iter)
         pool.apply_async(upload, ([img],), callback=callback).wait()
+
+time.sleep(5)
 
 print("""
 시나리오 7
