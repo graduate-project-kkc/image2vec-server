@@ -2,7 +2,7 @@ import os
 import random
 import requests
 import time
-from multiprocessing.pool import ThreadPool
+from multiprocessing.pool import ThreadPool, AsyncResult
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 
 from src.timer import SimpleTimer
@@ -39,7 +39,7 @@ test_img_list = os.listdir(TEST_IMG_DIR)
 for excluded_img in ["20250902_133843.jpg", "20250510_151332.jpg", "20250510_151333.jpg", 
                      "20250510_151335.jpg", "20250510_171121.jpg", "20250425_122634.jpg"]:
     test_img_list.remove(excluded_img)
-test_img_list = list(filter(lambda x: os.path.getsize(os.path.join(TEST_IMG_DIR, x)) <= 10*1024*1024, test_img_list))
+test_img_list = list(filter(lambda x: os.path.getsize(os.path.join(TEST_IMG_DIR, x)) <= 10*1024*1024, test_img_list)) * 100
 random.shuffle(test_img_list)
 test_img_iter = iter(test_img_list)
 
@@ -68,19 +68,30 @@ text_iter = iter(text_list)
 scenario_idx = 0
 task_idx = 0
 
-def search(scenario_idx: int, task_idx: int, query: str):
+tasks: list[AsyncResult] = []
+results = []
+timer = SimpleTimer()
+
+def init_scenario():
+    global scenario_idx, task_idx, tasks
+    scenario_idx += 1
+    task_idx = 0
+    tasks.clear()
+    timer.start()
+
+def _search(query: str):
     try:
         timer = SimpleTimer()
         timer.start()
         with requests.Session() as session:
             response = session.get(ENDPOINT_SEARCH + query)
             et = timer.stop()
-            return scenario_idx, task_idx, "text", len(query), timer.t, et, response.status_code, response.content.decode('utf-8')
+            return len(query), timer.t, et, response.status_code, response.content.decode('utf-8')
     except BaseException as e:
         et = timer.stop()
-        return scenario_idx, task_idx, "text", len(query), timer.t, 0, -1, f"{e.__class__.__name__}: {e}"
+        return len(query), timer.t, 0, -1, f"{e.__class__.__name__}: {e}"
 
-def upload(scenario_idx: int, task_idx: int, imgs):
+def _upload(imgs: list[str]):
     try:
         timer = SimpleTimer()
         timer.start()
@@ -88,177 +99,154 @@ def upload(scenario_idx: int, task_idx: int, imgs):
         with requests.Session() as session:
             response = session.post(ENDPOINT_UPLOAD, data=data, headers={"Content-Type": data.content_type})
             et = timer.stop()
-            return scenario_idx, task_idx, "image", sum(map(len, (open(os.path.join(TEST_IMG_DIR, img), "rb").read() for img in imgs))), \
+            return sum(map(len, (open(os.path.join(TEST_IMG_DIR, img), "rb").read() for img in imgs))), \
                 timer.t, et, response.status_code, response.content.decode('utf-8')
     except BaseException as e:
         et = timer.stop()
-        return scenario_idx, task_idx, "image", sum(map(len, (open(os.path.join(TEST_IMG_DIR, img), "rb").read() for img in imgs))), \
+        return sum(map(len, (open(os.path.join(TEST_IMG_DIR, img), "rb").read() for img in imgs))), \
             timer.t, 0, -1, f"{e.__class__.__name__}: {e}"
 
-timer = SimpleTimer()
+def search(pool: ThreadPool):
+    global task_idx
+    task_idx += 1
+    query = next(text_iter)
+    task = pool.apply_async(_search, (query,))
+    tasks.append((task_idx, 't', task))
+    return task
 
-def callback(args):
-    scenario_idx, task_id, work_type, data, start_timestamp, elapsed_time, status_code, content = args
-    print(f"Task #{scenario_idx}-{task_id} / {work_type} / {data} / {start_timestamp} / {elapsed_time:.4f} sec / "
-          f"{status_code} / {content if len(content) < 150 else content[:150] + '...'}")
-
-scenario_idx += 1
-print("""
-시나리오 1
-- 사진 1장 업로드
-""")
-
-with ThreadPool(processes=1) as pool:
+def upload(pool: ThreadPool):
+    global task_idx
+    task_idx += 1
     img = next(test_img_iter)
-    task_idx += 1
-    pool.apply_async(upload, (scenario_idx, task_idx, [img],), callback=callback).wait()
+    task = pool.apply_async(_upload, ([img],))
+    tasks.append((task_idx, 'i', task))
+    return task
 
-time.sleep(5)
+def get_result():
+    global results
+    task_results = [(scenario_idx, idx, task_type, task.get()) for idx, task_type, task in tasks]
+    results.append((timer.stop(), task_results))
 
-scenario_idx += 1
-print("""
-시나리오 2
-- 텍스트 검색 1번
-""")
+"""
+시나리오 1-15
+사진 업로드 1, 1, 1, 1, 1, 1, 2, 3, ..., 9, 10장
+각 시나리오 내 업로드 작업은 병렬로 요청 (이전 요청의 결과를 기다리지 않음)
+"""
 
-with ThreadPool(processes=1) as pool:
-    text = next(text_iter)
-    task_idx += 1
-    pool.apply_async(search, (scenario_idx, task_idx, text,), callback=callback).wait()
+img_amount = [1]*5 + list(range(1, 11))
+for a in img_amount:
+    init_scenario()
+    with ThreadPool(10) as pool:
+        for _ in range(a):
+            upload(pool)
+        get_result()
 
-time.sleep(5)
+"""
+시나리오 16-30
+사진 업로드 1, 1, 1, 1, 1, 1, 2, 3, ..., 9, 10장
+각 시나리오 내 업로드 작업은 병렬로 요청하되, 이전 요청 이후 1초를 기다림
+"""
 
-scenario_idx += 1
-print("""
-시나리오 3
-- 시나리오 2를 완료하고 이어서
-- 텍스트 검색 1번
-""")
+img_amount = [1]*5 + list(range(1, 11))
+for a in img_amount:
+    init_scenario()
+    with ThreadPool(10) as pool:
+        for _ in range(a):
+            upload(pool)
+            time.sleep(1)
+        get_result()
 
-with ThreadPool(processes=1) as pool:
-    text = next(text_iter)
-    task_idx += 1
-    pool.apply_async(search, (scenario_idx, task_idx, text,), callback=callback).wait()
+"""
+시나리오 31-45
+텍스트 검색 1, 1, 1, 1, 1, 1, 2, 3, ..., 9, 10번
+각 시나리오 내 검색 작업은 병렬로 요청 (이전 요청의 결과를 기다리지 않음)
+"""
 
-time.sleep(5)
+text_amount = [1]*5 + list(range(1, 11))
+for a in text_amount:
+    init_scenario()
+    with ThreadPool(10) as pool:
+        for _ in range(a):
+            search(pool)
+        get_result()
 
-scenario_idx += 1
-print("""
-시나리오 4
-- 시나리오 3을 완료하고 이어서
-- 사진 1장 업로드
-- 이전 요청 결과를 기다리고 텍스트 검색 1번
-""")
+"""
+시나리오 46-60
+텍스트 검색 1, 1, 1, 1, 1, 1, 2, 3, ..., 9, 10번
+각 시나리오 내 검색 작업은 병렬로 요청하되, 이전 요청 이후 1초를 기다림
+"""
 
-with ThreadPool(processes=1) as pool:
-    img = next(test_img_iter)
-    task_idx += 1
-    pool.apply_async(upload, (scenario_idx, task_idx, [img],), callback=callback).wait()
-    text = next(text_iter)
-    task_idx += 1
-    pool.apply_async(search, (scenario_idx, task_idx, text,), callback=callback).wait()
+text_amount = [1]*5 + list(range(1, 11))
+for a in text_amount:
+    init_scenario()
+    with ThreadPool(10) as pool:
+        for _ in range(a):
+            search(pool)
+            time.sleep(1)
+        get_result()
 
-time.sleep(5)
+"""
+시나리오 61-65
+이미지 업로드와 텍스트 검색을 5번 번갈아 가며 수행
+각 요청간 딜레이를 0, 1, 2, 3, 5초로 설정
+"""
 
-scenario_idx += 1
-print("""
-시나리오 5
-- 사진을 연속으로 5장 업로드
-""")
+delay_list = [0, 1, 2, 3, 5]
+for delay in delay_list:
+    init_scenario()
+    with ThreadPool(10) as pool:
+        for i in range(5):
+            upload(pool)
+            time.sleep(delay)
+            search(pool)
+            if i < 4:
+                time.sleep(delay)
+        get_result()
 
-async_results = []
-with ThreadPool(processes=5) as pool:
-    for _ in range(5):
-        img = next(test_img_iter)
-        task_idx += 1
-        async_results.append(pool.apply_async(upload, (scenario_idx, task_idx, [img],), callback=callback))
-    for r in async_results:
-        r.wait()
 
-time.sleep(5)
+# Print for analyze with ipynb program
+with open(f"{time.time_ns()}_test_local_log.txt", "w", encoding="utf-8") as f:
+    t_num = 1
+    for _, scenario in results:
+        for task in scenario:
+            s_idx, _, work_type, (data_len, start_timestamp, elapsed_time, status_code, content) = task
+            print(f"Task #{scenario_idx}-{t_num} / {work_type} / {data_len} / {start_timestamp} / {elapsed_time:.4f} sec / "
+                    f"{status_code} / {content if len(content) < 150 else content[:150] + '...'}", file=f)
+            t_num += 1
 
-scenario_idx += 1
-print("""
-시나리오 6
-- 다음을 5번 반복
-  - 사진 1장 업로드 후 기다림
-""")
 
-with ThreadPool(processes=1) as pool:
-    for _ in range(5):
-        img = next(test_img_iter)
-        task_idx += 1
-        pool.apply_async(upload, (scenario_idx, task_idx, [img],), callback=callback).wait()
-
-time.sleep(5)
-
-scenario_idx += 1
-print("""
-시나리오 7
-- 텍스트 연속 10번 검색
-""")
-
-async_results = []
-with ThreadPool(processes=10) as pool:
-    for _ in range(10):
-        text = next(text_iter)
-        task_idx += 1
-        async_results.append(pool.apply_async(search, (scenario_idx, task_idx, text,), callback=callback))
-    for r in async_results:
-        r.wait()
-
-time.sleep(5)
-
-scenario_idx += 1
-print("""
-시나리오 8
-- 다음을 10번 반복
-  - 텍스트 1번 검색 후 기다림
-""")
-
-with ThreadPool(processes=10) as pool:
-    for _ in range(10):
-        text = next(text_iter)
-        task_idx += 1
-        pool.apply_async(search, (scenario_idx, task_idx, text,), callback=callback).wait()
-
-time.sleep(5)
-
-scenario_idx += 1
-print("""
-시나리오 9
-- 다음을 5번 반복
-  - 이전 요청 결과를 기다리고 텍스트 검색 1번
-  - 이전 요청 결과를 기다리고 사진 1장 업로드
-""")
-
-with ThreadPool(processes=1) as pool:
-    for _ in range(5):
-        text = next(text_iter)
-        task_idx += 1
-        pool.apply_async(search, (scenario_idx, task_idx, text,), callback=callback).wait()
-        img = next(test_img_iter)
-        task_idx += 1
-        pool.apply_async(upload, (scenario_idx, task_idx, [img],), callback=callback).wait()
-
-time.sleep(5)
-
-scenario_idx += 1
-print("""
-시나리오 10
-- 다음을 3번 반복
-  - 텍스트 검색 1번
-  - 사진 1장 업로드
-""")
-
-async_results = []
-with ThreadPool(processes=6) as pool:
-    for _ in range(3):
-        img = next(test_img_iter)
-        task_idx += 1
-        async_results.append(pool.apply_async(upload, (scenario_idx, task_idx, [img],), callback=callback))
-        text = next(text_iter)
-        task_idx += 1
-        async_results.append(pool.apply_async(search, (scenario_idx, task_idx, text,), callback=callback))
-    for r in async_results:
-        r.wait()
+# Summary data
+print("#Scenario | Time taken (sec) | Upload(#task) - Min / Avg / Max (sec) | Search(#task) - Min / Avg / Max (sec)")
+for scenario_time, scenario in results:
+    s_num = scenario[0][0]
+    stime_min = float('inf')
+    stime_max = float('-inf')
+    stime_sum = 0
+    stime_count = 0
+    utime_min = float('inf')
+    utime_max = float('-inf')
+    utime_sum = 0
+    utime_count = 0
+    for task in scenario:
+        _, _, work_type, (data_len, start_timestamp, elapsed_time, status_code, _) = task
+        if status_code == 200:
+            continue
+        if work_type == 't':
+            stime_count += 1
+            stime_sum += elapsed_time
+            stime_min = min(stime_min, elapsed_time)
+            stime_max = max(stime_max, elapsed_time)
+        else:
+            utime_count += 1
+            utime_sum += elapsed_time
+            utime_min = min(utime_min, elapsed_time)
+            utime_max = max(utime_max, elapsed_time)
+    if stime_count == 0:
+        stime_str = "( 0)  -------- / -------- / -------- "
+    else:
+        stime_str = f"({stime_count:>2d})  {stime_min:>8.5f} / {stime_sum/stime_count:>8.5f} / {stime_max:>8.5f} "
+    if utime_count == 0:
+        utime_str = "( 0)  -------- / -------- / -------- "
+    else:
+        utime_str = f"({utime_count:>2d})  {utime_min:>8.5f} / {utime_sum/utime_count:>8.5f} / {utime_max:>8.5f} "
+    print(f"{s_num:>9d} | {scenario_time:>16.4f} | {utime_str} | {stime_str}")
