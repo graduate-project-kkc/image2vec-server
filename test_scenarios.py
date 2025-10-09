@@ -2,6 +2,7 @@ import os
 import random
 import requests
 import time
+import paramiko
 from multiprocessing.pool import ThreadPool, AsyncResult
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 
@@ -28,6 +29,8 @@ sy = system level 코드 실행%
 id = 100 - us - sy
 wa = 디스크 등 IO작업으로 CPU가 대기하는 비율
 """
+
+THIS_TIME = time.time_ns()
 
 ENDPOINT_SEARCH = "http://52.79.227.178:8080/api/search?query="
 ENDPOINT_UPLOAD = "http://52.79.227.178:8080/api/images"
@@ -77,6 +80,7 @@ def init_scenario():
     scenario_idx += 1
     task_idx = 0
     tasks.clear()
+    print(f"[Test] Scenario {scenario_idx} start.")
     timer.start()
 
 def _search(query: str):
@@ -122,131 +126,201 @@ def upload(pool: ThreadPool):
     tasks.append((task_idx, 'i', task))
     return task
 
-def get_result():
+def end_scenario():
     global results
     task_results = [(scenario_idx, idx, task_type, task.get()) for idx, task_type, task in tasks]
-    results.append((timer.stop(), task_results))
+    et = timer.stop()
+    print(f"[Test] Scenario {scenario_idx} - {et:.4f} sec.")
+    results.append((et, task_results))
+    time.sleep(3)
 
-"""
-시나리오 1-15
-사진 업로드 1, 1, 1, 1, 1, 1, 2, 3, ..., 9, 10장
-각 시나리오 내 업로드 작업은 병렬로 요청 (이전 요청의 결과를 기다리지 않음)
-"""
 
-img_amount = [1]*5 + list(range(1, 11))
-for a in img_amount:
-    init_scenario()
-    with ThreadPool(10) as pool:
-        for _ in range(a):
-            upload(pool)
-        get_result()
+def main_test():
+    global scenario_idx, task_idx, tasks, results, timer
+    """
+    각 시나리오 진행 후 다음 시나리오까지 3초간 대기
+    """
 
-"""
-시나리오 16-30
-사진 업로드 1, 1, 1, 1, 1, 1, 2, 3, ..., 9, 10장
-각 시나리오 내 업로드 작업은 병렬로 요청하되, 이전 요청 이후 1초를 기다림
-"""
+    """
+    시나리오 1-15
+    사진 업로드 1, 1, 1, 1, 1, 1, 2, 3, ..., 9, 10장
+    각 시나리오 내 업로드 작업은 병렬로 요청 (이전 요청의 결과를 기다리지 않음)
+    """
 
-img_amount = [1]*5 + list(range(1, 11))
-for a in img_amount:
-    init_scenario()
-    with ThreadPool(10) as pool:
-        for _ in range(a):
-            upload(pool)
-            time.sleep(1)
-        get_result()
+    img_amount = [1]*5 + list(range(1, 11))
+    for a in img_amount:
+        init_scenario()
+        with ThreadPool(10) as pool:
+            for _ in range(a):
+                upload(pool)
+            end_scenario()
 
-"""
-시나리오 31-45
-텍스트 검색 1, 1, 1, 1, 1, 1, 2, 3, ..., 9, 10번
-각 시나리오 내 검색 작업은 병렬로 요청 (이전 요청의 결과를 기다리지 않음)
-"""
+    """
+    시나리오 16-30
+    사진 업로드 1, 1, 1, 1, 1, 1, 2, 3, ..., 9, 10장
+    각 시나리오 내 업로드 작업은 병렬로 요청하되, 이전 요청 이후 1초를 기다림
+    """
 
-text_amount = [1]*5 + list(range(1, 11))
-for a in text_amount:
-    init_scenario()
-    with ThreadPool(10) as pool:
-        for _ in range(a):
-            search(pool)
-        get_result()
+    img_amount = [1]*5 + list(range(1, 11))
+    for a in img_amount:
+        init_scenario()
+        with ThreadPool(10) as pool:
+            for _ in range(a):
+                upload(pool)
+                time.sleep(1)
+            end_scenario()
 
-"""
-시나리오 46-60
-텍스트 검색 1, 1, 1, 1, 1, 1, 2, 3, ..., 9, 10번
-각 시나리오 내 검색 작업은 병렬로 요청하되, 이전 요청 이후 1초를 기다림
-"""
+    """
+    시나리오 31-45
+    텍스트 검색 1, 1, 1, 1, 1, 1, 2, 3, ..., 9, 10번
+    각 시나리오 내 검색 작업은 병렬로 요청 (이전 요청의 결과를 기다리지 않음)
+    """
 
-text_amount = [1]*5 + list(range(1, 11))
-for a in text_amount:
-    init_scenario()
-    with ThreadPool(10) as pool:
-        for _ in range(a):
-            search(pool)
-            time.sleep(1)
-        get_result()
+    text_amount = [1]*5 + list(range(1, 11))
+    for a in text_amount:
+        init_scenario()
+        with ThreadPool(10) as pool:
+            for _ in range(a):
+                search(pool)
+            end_scenario()
 
-"""
-시나리오 61-65
-이미지 업로드와 텍스트 검색을 5번 번갈아 가며 수행
-각 요청간 딜레이를 0, 1, 2, 3, 5초로 설정
-"""
+    """
+    시나리오 46-60
+    텍스트 검색 1, 1, 1, 1, 1, 1, 2, 3, ..., 9, 10번
+    각 시나리오 내 검색 작업은 병렬로 요청하되, 이전 요청 이후 1초를 기다림
+    """
 
-delay_list = [0, 1, 2, 3, 5]
-for delay in delay_list:
-    init_scenario()
-    with ThreadPool(10) as pool:
-        for i in range(5):
-            upload(pool)
-            time.sleep(delay)
-            search(pool)
-            if i < 4:
+    text_amount = [1]*5 + list(range(1, 11))
+    for a in text_amount:
+        init_scenario()
+        with ThreadPool(10) as pool:
+            for _ in range(a):
+                search(pool)
+                time.sleep(1)
+            end_scenario()
+
+    """
+    시나리오 61-65
+    이미지 업로드와 텍스트 검색을 5번 번갈아 가며 수행
+    각 요청간 딜레이를 0, 1, 2, 3, 5초로 설정
+    """
+
+    delay_list = [0, 1, 2, 3, 5]
+    for delay in delay_list:
+        init_scenario()
+        with ThreadPool(10) as pool:
+            for i in range(5):
+                upload(pool)
                 time.sleep(delay)
-        get_result()
+                search(pool)
+                if i < 4:
+                    time.sleep(delay)
+            end_scenario()
 
 
-# Print for analyze with ipynb program
-with open(f"{time.time_ns()}_test_local_log.txt", "w", encoding="utf-8") as f:
-    t_num = 1
-    for _, scenario in results:
+    # Print for analyze with ipynb program
+    with open(f"test_result/{THIS_TIME}_test_local_log.txt", "w", encoding="utf-8") as f:
+        t_num = 1
+        for _, scenario in results:
+            for task in scenario:
+                s_idx, _, work_type, (data_len, start_timestamp, elapsed_time, status_code, content) = task
+                print(f"Task #{s_idx}-{t_num} / {work_type} / {data_len} / {start_timestamp} / {elapsed_time:.4f} sec / "
+                        f"{status_code} / {content if len(content) < 150 else content[:150] + '...'}", file=f)
+                t_num += 1
+
+
+    # Summary data
+    print("#Scenario | Time taken (sec) | Upload(#task) - Min / Avg / Max (sec) | Search(#task) - Min / Avg / Max (sec)")
+    for scenario_time, scenario in results:
+        s_num = scenario[0][0]
+        stime_min = float('inf')
+        stime_max = float('-inf')
+        stime_sum = 0
+        stime_count = 0
+        utime_min = float('inf')
+        utime_max = float('-inf')
+        utime_sum = 0
+        utime_count = 0
         for task in scenario:
-            s_idx, _, work_type, (data_len, start_timestamp, elapsed_time, status_code, content) = task
-            print(f"Task #{scenario_idx}-{t_num} / {work_type} / {data_len} / {start_timestamp} / {elapsed_time:.4f} sec / "
-                    f"{status_code} / {content if len(content) < 150 else content[:150] + '...'}", file=f)
-            t_num += 1
-
-
-# Summary data
-print("#Scenario | Time taken (sec) | Upload(#task) - Min / Avg / Max (sec) | Search(#task) - Min / Avg / Max (sec)")
-for scenario_time, scenario in results:
-    s_num = scenario[0][0]
-    stime_min = float('inf')
-    stime_max = float('-inf')
-    stime_sum = 0
-    stime_count = 0
-    utime_min = float('inf')
-    utime_max = float('-inf')
-    utime_sum = 0
-    utime_count = 0
-    for task in scenario:
-        _, _, work_type, (data_len, start_timestamp, elapsed_time, status_code, _) = task
-        if status_code == 200:
-            continue
-        if work_type == 't':
-            stime_count += 1
-            stime_sum += elapsed_time
-            stime_min = min(stime_min, elapsed_time)
-            stime_max = max(stime_max, elapsed_time)
+            _, _, work_type, (data_len, start_timestamp, elapsed_time, status_code, _) = task
+            if status_code != 200:
+                continue
+            if work_type == 't':
+                stime_count += 1
+                stime_sum += elapsed_time
+                stime_min = min(stime_min, elapsed_time)
+                stime_max = max(stime_max, elapsed_time)
+            else:
+                utime_count += 1
+                utime_sum += elapsed_time
+                utime_min = min(utime_min, elapsed_time)
+                utime_max = max(utime_max, elapsed_time)
+        if stime_count == 0:
+            stime_str = "( 0)  -------- / -------- / -------- "
         else:
-            utime_count += 1
-            utime_sum += elapsed_time
-            utime_min = min(utime_min, elapsed_time)
-            utime_max = max(utime_max, elapsed_time)
-    if stime_count == 0:
-        stime_str = "( 0)  -------- / -------- / -------- "
-    else:
-        stime_str = f"({stime_count:>2d})  {stime_min:>8.5f} / {stime_sum/stime_count:>8.5f} / {stime_max:>8.5f} "
-    if utime_count == 0:
-        utime_str = "( 0)  -------- / -------- / -------- "
-    else:
-        utime_str = f"({utime_count:>2d})  {utime_min:>8.5f} / {utime_sum/utime_count:>8.5f} / {utime_max:>8.5f} "
-    print(f"{s_num:>9d} | {scenario_time:>16.4f} | {utime_str} | {stime_str}")
+            stime_str = f"({stime_count:>2d})  {stime_min:>8.4f} / {stime_sum/stime_count:>8.4f} / {stime_max:>8.4f} "
+        if utime_count == 0:
+            utime_str = "( 0)  -------- / -------- / -------- "
+        else:
+            utime_str = f"({utime_count:>2d})  {utime_min:>8.4f} / {utime_sum/utime_count:>8.4f} / {utime_max:>8.4f} "
+        print(f"{s_num:>9d} | {scenario_time:>16.4f} | {utime_str} | {stime_str}")
+
+
+HOST = "ec2-3-38-180-4.ap-northeast-2.compute.amazonaws.com"
+ID = "ubuntu"
+# TODO: modify the path of private key by your local environment
+KEY = paramiko.RSAKey.from_private_key_file(r"C:\Users\frien\Desktop\workplace\keys\ai-server.pem")
+
+ssh = paramiko.SSHClient()
+ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # WARN: On private PC only
+ssh.connect(HOST, username=ID, pkey=KEY)
+sftp = ssh.open_sftp()
+
+print("[SSH] Connection held.")
+
+try:
+    stdin, stdout, stderr = ssh.exec_command(b"sudo docker inspect -f \"{{.State.Pid}}\" ai-server\n", get_pty=True)
+    while not stdout.channel.exit_status_ready():
+        time.sleep(0.1)
+
+    SERVER_PID = int(stdout.read().strip())
+    print(f"[SSH] SERVER_PID = {SERVER_PID}")
+    stdin_top, stdout, stderr = ssh.exec_command(
+        f"stdbuf -oL top -b -n 3600 -d 1 -p {SERVER_PID} "
+        f"| stdbuf -oL grep --line-buffered \"{SERVER_PID}\" "
+        f"| stdbuf -oL awk '$1 == {SERVER_PID} {{print systime(), $0}}' > logs/top-output.txt\n".encode("utf-8"), 
+        get_pty=True)
+    print("[SSH] top: Sent command.")
+    stdin_vm, stdout, stderr = ssh.exec_command(
+        "stdbuf -oL vmstat -t 1 > logs/vmstat-output.txt\n".encode("utf-8"), 
+        get_pty=True)
+    print("[SSH] vmstat: Sent command.")
+    
+    print("[Test] starting in 5 sec.")
+    time.sleep(5)
+    main_test()
+    print("[Test] finished.")
+    print("[SSH] Interrupting the log processes in 5 sec.")
+    time.sleep(5)
+
+    stdin_top.channel.send(b"\x03")
+    print("[SSH] top: Sent SIGINT.")
+    stdin_vm.channel.send(b"\x03")
+    print("[SSH] vmstat: Sent SIGINT.")
+
+    print("[SSH] Getting the log files in 3 sec.")
+    time.sleep(3)
+
+    sftp.get("logs/top-output.txt", f"test_result/{THIS_TIME}_test_top_log.txt")
+    sftp.get("logs/vmstat-output.txt", f"test_result/{THIS_TIME}_test_vmstat_log.txt")
+    print("[SSH] Log files transferred.")
+
+except Exception as e:
+    print(f"[Error] {e.__class__.__name__}: {e}")
+
+finally:
+    sftp.close()
+    ssh.close()
+
+    print("[SSH] Connection closed.")
+

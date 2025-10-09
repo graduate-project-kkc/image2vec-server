@@ -1,6 +1,8 @@
 test_images/
 clip-vit-large-patch14/
 model/
+.vscode/
+test_result/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
