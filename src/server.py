@@ -48,7 +48,7 @@ def upload_to_db(image_id):
     timer.start()
     with requests.get(s3_URL + image_id) as response:
         if response.status_code != 200:
-            return {"status": "failed", "error_msg": "Error on communicating to image server."}
+            return {"image_id": image_id, "status": "failed", "error_msg": "Error on communicating to image server."}
         data = response.content
     elapsed = timer.stop()
     logger.info(f"[Upload] Loaded data of {image_id} from ImgDB ({elapsed:.3f} sec)")
@@ -60,10 +60,10 @@ def upload_to_db(image_id):
     try:
         db.push(image_id, vector)
     except ValueError as e:
-        return {"status": "failed", "error_msg": f"{type(e)}: {e}"}
+        return {"image_id": image_id, "status": "failed", "error_msg": f"{type(e)}: {e}"}
     elapsed = timer.stop()
     logger.info(f"[Upload] Uploaded feature vector of {image_id} ({elapsed:.3f} sec)")
-    return {"status": "success"}
+    return {"image_id": image_id, "status": "success"}
 
 @app.get("/api/count")
 def api_get_uploaded_images():
