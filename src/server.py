@@ -48,7 +48,7 @@ def upload_to_db(image_id):
     timer.start()
     with requests.get(s3_URL + image_id) as response:
         if response.status_code != 200:
-            return {"image_id": image_id, "image_id": image_id, "status": "failed", "error_msg": f"Error on communicating to image server - {response.status_code}"}
+            return {"image_id": image_id, "status": "failed", "error_msg": f"Error on communicating to image server - {response.status_code}"}
         data = response.content
     elapsed = timer.stop()
     logger.info(f"[Upload] Loaded data of {image_id} from ImgDB ({elapsed:.3f} sec)")
