@@ -126,28 +126,99 @@ def upload(pool: ThreadPool):
     tasks.append((task_idx, 'i', task))
     return task
 
+def search_block(pool: ThreadPool):
+    search(pool).wait()
+
+def upload_block(pool: ThreadPool):
+    upload(pool).wait()
+
+def wait_results():
+    for task in tasks:
+        task.wait()
+
 def end_scenario():
     global results
     task_results = [(scenario_idx, idx, task_type, task.get()) for idx, task_type, task in tasks]
     et = timer.stop()
     print(f"[Test] Scenario {scenario_idx} - {et:.4f} sec.")
     results.append((et, task_results))
-    time.sleep(3)
+    time.sleep(5)
 
 
 def main_test():
     global scenario_idx, task_idx, tasks, results, timer
     """
-    각 시나리오 진행 후 다음 시나리오까지 3초간 대기
+    각 시나리오 진행 후 다음 시나리오까지 5초간 대기
     """
+    
+    """
+    시나리오 1
+    사진 업로드 1장 5번 순차적으로 요청
+    """
+    
+    init_scenario()
+    with ThreadPool(1) as pool:
+        for _ in range(5):
+            upload_block(pool)
+        end_scenario()
+    
+    """
+    시나리오 2
+    텍스트 검색 5번 순차적으로 요청
+    """
+    
+    init_scenario()
+    with ThreadPool(1) as pool:
+        for _ in range(5):
+            search_block(pool)
+        end_scenario()
+    
+    """
+    시나리오 3
+    다시 사진 업로드 1장 5번 순차적으로 요청
+    """
+    
+    init_scenario()
+    with ThreadPool(1) as pool:
+        for _ in range(5):
+            search_block(pool)
+        end_scenario()
+    
+    """
+    시나리오 4
+    사진 업로드와 텍스트 검색을 번갈아가며 5번씩 순차적으로 요청
+    (이전 요청의 결과를 기다림)
+    """
+    
+    init_scenario()
+    with ThreadPool(1) as pool:
+        for _ in range(5):
+            upload_block(pool)
+            search_block(pool)
+        end_scenario()
+    
+    """
+    시나리오 5
+    사진 업로드 또는 텍스트 검색을 랜덤하게 10번 순차적으로 요청
+    (이전 요청의 결과를 기다림)
+    """
+    
+    init_scenario()
+    with ThreadPool(1) as pool:
+        for _ in range(10):
+            if random.random() < 0.5:
+                upload_block(pool)
+            else:
+                search_block(pool)
+        end_scenario()
 
     """
-    시나리오 1-15
-    사진 업로드 1, 1, 1, 1, 1, 1, 2, 3, ..., 9, 10장
+    시나리오 6-15
+    사진 업로드 1, 2, 3, ..., 9, 10장
     각 시나리오 내 업로드 작업은 병렬로 요청 (이전 요청의 결과를 기다리지 않음)
     """
 
-    img_amount = [1]*5 + list(range(1, 11))
+    img_amount = list(range(1, 11))
     for a in img_amount:
         init_scenario()
         with ThreadPool(10) as pool:
@@ -156,27 +227,40 @@ def main_test():
             end_scenario()
 
     """
-    시나리오 16-30
-    사진 업로드 1, 1, 1, 1, 1, 1, 2, 3, ..., 9, 10장
-    각 시나리오 내 업로드 작업은 병렬로 요청하되, 이전 요청 이후 1초를 기다림
+    시나리오 16-20
+    사진 업로드 1, 2, 3, 4, 5장
+    각 시나리오 내 업로드 작업은 순차적으로 요청 (이전 요청의 결과를 기다림)
+    """
+    img_amount = list(range(1, 6))
+    for a in img_amount:
+        init_scenario()
+        with ThreadPool(1) as pool:
+            for _ in range(a):
+                upload_block(pool)
+            end_scenario()
+
+    """
+    시나리오 21-30
+    사진 업로드 1, 2, 3, ..., 9, 10장
+    각 시나리오 내 업로드 작업은 병렬로 요청하되, 이전 요청 이후 5초를 기다림
     """
 
-    img_amount = [1]*5 + list(range(1, 11))
+    img_amount = list(range(1, 11))
     for a in img_amount:
         init_scenario()
         with ThreadPool(10) as pool:
             for _ in range(a):
                 upload(pool)
-                time.sleep(1)
+                time.sleep(5)
             end_scenario()
 
     """
     시나리오 31-45
-    텍스트 검색 1, 1, 1, 1, 1, 1, 2, 3, ..., 9, 10번
+    텍스트 검색 1, 2, 3, ..., 9, 10번
     각 시나리오 내 검색 작업은 병렬로 요청 (이전 요청의 결과를 기다리지 않음)
     """
 
-    text_amount = [1]*5 + list(range(1, 11))
+    text_amount = list(range(1, 11))
     for a in text_amount:
         init_scenario()
         with ThreadPool(10) as pool:
@@ -185,38 +269,100 @@ def main_test():
             end_scenario()
 
     """
-    시나리오 46-60
-    텍스트 검색 1, 1, 1, 1, 1, 1, 2, 3, ..., 9, 10번
-    각 시나리오 내 검색 작업은 병렬로 요청하되, 이전 요청 이후 1초를 기다림
+    시나리오 46-50
+    텍스트 검색 1, 2, 3, 4, 5장
+    각 시나리오 내 검색 작업은 순차적으로 요청 (이전 요청의 결과를 기다림)
+    """
+    text_amount = list(range(1, 6))
+    for a in text_amount:
+        init_scenario()
+        with ThreadPool(1) as pool:
+            for _ in range(a):
+                search_block(pool)
+            end_scenario()
+
+    """
+    시나리오 51-60
+    텍스트 검색 1, 2, 3, ..., 9, 10번
+    각 시나리오 내 검색 작업은 병렬로 요청하되, 이전 요청 이후 0.5초를 기다림
     """
 
-    text_amount = [1]*5 + list(range(1, 11))
+    text_amount = list(range(1, 11))
     for a in text_amount:
         init_scenario()
         with ThreadPool(10) as pool:
             for _ in range(a):
                 search(pool)
-                time.sleep(1)
+                time.sleep(0.5)
             end_scenario()
 
     """
-    시나리오 61-65
-    이미지 업로드와 텍스트 검색을 5번 번갈아 가며 수행
-    각 요청간 딜레이를 0, 1, 2, 3, 5초로 설정
+    시나리오 61-85
+    이미지 업로드와 텍스트 검색를 동시에 1, 2, 3, 4, 5번 요청
+    1번씩 요청 후 딜레이를 0, 1, 2, 3, 5초로 설정
+    
+    시나리오 #61 : 1번, 0초
+    시나리오 #62 : 2번, 0초
+    시나리오 #63 : 3번, 0초
+    시나리오 #64 : 4번, 0초
+    시나리오 #65 : 5번, 0초
+    시나리오 #66 : 1번, 1초
+    시나리오 #67 : 2번, 1초
+    ...
+    시나리오 #84 : 4번, 5초
+    시나리오 #85 : 5번, 5초
     """
 
     delay_list = [0, 1, 2, 3, 5]
+    rep_list = list(range(1, 6))
     for delay in delay_list:
+        for task_rep in rep_list:
+            init_scenario()
+            with ThreadPool(2 * task_rep) as pool:
+                for i in range(task_rep):
+                    upload(pool)
+                    search(pool)
+                    if i < task_rep - 1:
+                        time.sleep(delay)
+                end_scenario()
+
+    """
+    시나리오 86-95
+    이미지 업로드 동시 1, 2, 3, ..., 10번 요청,
+    모든 요청의 결과를 기다리고 텍스트 검색 1, 2, 3, ..., 10번 요청
+    """
+    
+    amount = list(range(1, 11))
+    for a in amount:
         init_scenario()
         with ThreadPool(10) as pool:
-            for i in range(5):
+            for _ in range(a):
                 upload(pool)
-                time.sleep(delay)
+            wait_results()
+            for _ in range(a):
                 search(pool)
-                if i < 4:
-                    time.sleep(delay)
             end_scenario()
-
+    
+    """
+    시나리오 96-100
+    이미지 업로드, 텍스트 검색 5번씩 요청
+    각 요청은 랜덤한 시간에 전송
+    """
+    for _ in range(5):
+        init_scenario()
+        start_time = [0] + [i + random.random() + 0.5 for i in range(9)]
+        intervals = [start_time[i + 1] - start_time[i] for i in range(8)] + [0]
+        task_order = list("iiiiittttt")
+        random.shuffle(task_order)
+        with ThreadPool(10) as pool:
+            for i, it in enumerate(intervals):
+                if task_order[i] == 'i':
+                    upload(pool)
+                else:
+                    search(pool)
+                time.sleep(it)
+            end_scenario()
+        
 
     # Print for analyze with ipynb program
     with open(f"test_result/{THIS_TIME}_test_local_log.txt", "w", encoding="utf-8") as f:
