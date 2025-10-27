@@ -133,7 +133,7 @@ def upload_block(pool: ThreadPool):
     upload(pool).wait()
 
 def wait_results():
-    for task in tasks:
+    for _, _, task in tasks:
         task.wait()
 
 def end_scenario():
@@ -181,7 +181,7 @@ def main_test():
     init_scenario()
     with ThreadPool(1) as pool:
         for _ in range(5):
-            search_block(pool)
+            upload_block(pool)
         end_scenario()
     
     """
@@ -255,7 +255,7 @@ def main_test():
             end_scenario()
 
     """
-    시나리오 31-45
+    시나리오 31-40
     텍스트 검색 1, 2, 3, ..., 9, 10번
     각 시나리오 내 검색 작업은 병렬로 요청 (이전 요청의 결과를 기다리지 않음)
     """
@@ -269,7 +269,7 @@ def main_test():
             end_scenario()
 
     """
-    시나리오 46-50
+    시나리오 41-45
     텍스트 검색 1, 2, 3, 4, 5장
     각 시나리오 내 검색 작업은 순차적으로 요청 (이전 요청의 결과를 기다림)
     """
@@ -282,7 +282,7 @@ def main_test():
             end_scenario()
 
     """
-    시나리오 51-60
+    시나리오 46-55
     텍스트 검색 1, 2, 3, ..., 9, 10번
     각 시나리오 내 검색 작업은 병렬로 요청하되, 이전 요청 이후 0.5초를 기다림
     """
@@ -297,7 +297,7 @@ def main_test():
             end_scenario()
 
     """
-    시나리오 61-85
+    시나리오 56-80
     이미지 업로드와 텍스트 검색를 동시에 1, 2, 3, 4, 5번 요청
     1번씩 요청 후 딜레이를 0, 1, 2, 3, 5초로 설정
     
@@ -327,7 +327,7 @@ def main_test():
                 end_scenario()
 
     """
-    시나리오 86-95
+    시나리오 81-90
     이미지 업로드 동시 1, 2, 3, ..., 10번 요청,
     모든 요청의 결과를 기다리고 텍스트 검색 1, 2, 3, ..., 10번 요청
     """
@@ -344,14 +344,14 @@ def main_test():
             end_scenario()
     
     """
-    시나리오 96-100
+    시나리오 91-100
     이미지 업로드, 텍스트 검색 5번씩 요청
     각 요청은 랜덤한 시간에 전송
     """
-    for _ in range(5):
+    for _ in range(10):
         init_scenario()
         start_time = [0] + [i + random.random() + 0.5 for i in range(9)]
-        intervals = [start_time[i + 1] - start_time[i] for i in range(8)] + [0]
+        intervals = [start_time[i + 1] - start_time[i] for i in range(9)] + [0]
         task_order = list("iiiiittttt")
         random.shuffle(task_order)
         with ThreadPool(10) as pool:
@@ -420,7 +420,7 @@ KEY = paramiko.RSAKey.from_private_key_file(r"C:\Users\frien\Desktop\workplace\k
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # WARN: On private PC only
 ssh.connect(HOST, username=ID, pkey=KEY)
-sftp = ssh.open_sftp()
+sftp = None
 
 print("[SSH] Connection held.")
 
@@ -451,12 +451,15 @@ try:
 
     stdin_top.channel.send(b"\x03")
     print("[SSH] top: Sent SIGINT.")
+    stdin_top.close()
     stdin_vm.channel.send(b"\x03")
     print("[SSH] vmstat: Sent SIGINT.")
+    stdin_vm.close()
 
     print("[SSH] Getting the log files in 3 sec.")
     time.sleep(3)
 
+    sftp = ssh.open_sftp()
     sftp.get("logs/top-output.txt", f"test_result/{THIS_TIME}_test_top_log.txt")
     sftp.get("logs/vmstat-output.txt", f"test_result/{THIS_TIME}_test_vmstat_log.txt")
     print("[SSH] Log files transferred.")
@@ -465,7 +468,19 @@ except Exception as e:
     print(f"[Error] {e.__class__.__name__}: {e}")
 
 finally:
-    sftp.close()
+    if not stdin_top.closed:
+        stdin_top.channel.send(b"\x03")
+        print("[SSH] top: Sent SIGINT.")
+        stdin_top.close()
+    if not stdin_vm.closed:
+        stdin_vm.channel.send(b"\x03")
+        print("[SSH] vmstat: Sent SIGINT.")
+        stdin_vm.close()
+
+    if sftp is not None:
+        sftp.close()
+    if not stdin.closed:
+        stdin.close()
     ssh.close()
 
     print("[SSH] Connection closed.")
