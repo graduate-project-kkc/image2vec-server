@@ -3,6 +3,7 @@ import random
 import requests
 import time
 import paramiko
+import threading
 from multiprocessing.pool import ThreadPool, AsyncResult
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 
@@ -144,6 +145,44 @@ def end_scenario():
     results.append((et, task_results))
     time.sleep(5)
 
+
+end_log = False
+
+def log_smem(ssh: paramiko.SSHClient, pid: int):
+    print(f"[SMEM] SERVER_PID = {pid}")
+    
+    COMMAND = f"sudo smem -c \"pid swap uss pss\" | grep \"^{pid}\" | awk '{{print systime(), $0}}'"
+    
+    f = open(f"test_result/{THIS_TIME}_test_smem_log.txt", "w", encoding="utf-8")
+    try:
+        while not end_log:
+            _, stdout, _ = ssh.exec_command(COMMAND.encode("utf-8"), get_pty=True)
+            time.sleep(1)
+            f.write(stdout.readlines()[0].replace("\r\n", "\n"))
+            f.flush()
+    except Exception as e:
+        print(f"[SMEM] Error: {e.__class__.__name__}: {e}")
+    finally:
+        f.close()
+        print(f"[SMEM] Good bye")
+
+def log_vmstat(ssh: paramiko.SSHClient, pid: int):
+    print(f"[VMSTAT] SERVER_PID = {pid}")
+    
+    COMMAND = f"vmstat -t 1 2"
+    
+    f = open(f"test_result/{THIS_TIME}_test_vmstat_log.txt", "w", encoding="utf-8")
+    try:
+        while not end_log:
+            _, stdout, _ = ssh.exec_command(COMMAND.encode("utf-8"), get_pty=True)
+            time.sleep(1)
+            f.write(stdout.readlines()[3].replace("\r\n", "\n"))
+            f.flush()
+    except Exception as e:
+        print(f"[VMSTAT] Error: {e.__class__.__name__}: {e}")
+    finally:
+        f.close()
+        print(f"[VMSTAT] Good bye")
 
 def main_test():
     global scenario_idx, task_idx, tasks, results, timer
@@ -420,7 +459,7 @@ KEY = paramiko.RSAKey.from_private_key_file(r"C:\Users\frien\Desktop\workplace\k
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # WARN: On private PC only
 ssh.connect(HOST, username=ID, pkey=KEY)
-sftp = None
+# sftp = None
 
 print("[SSH] Connection held.")
 
@@ -431,54 +470,67 @@ try:
 
     SERVER_PID = int(stdout.read().strip())
     print(f"[SSH] SERVER_PID = {SERVER_PID}")
-    stdin_top, stdout, stderr = ssh.exec_command(
-        f"stdbuf -oL top -b -n 3600 -d 1 -p {SERVER_PID} "
-        f"| stdbuf -oL grep --line-buffered \"{SERVER_PID}\" "
-        f"| stdbuf -oL awk '$1 == {SERVER_PID} {{print systime(), $0}}' > logs/top-output.txt\n".encode("utf-8"), 
-        get_pty=True)
-    print("[SSH] top: Sent command.")
-    stdin_vm, stdout, stderr = ssh.exec_command(
-        "stdbuf -oL vmstat -t 1 > logs/vmstat-output.txt\n".encode("utf-8"), 
-        get_pty=True)
-    print("[SSH] vmstat: Sent command.")
+    
+    # stdin_top, stdout, stderr = ssh.exec_command(
+    #     f"stdbuf -oL top -b -n 3600 -d 1 -p {SERVER_PID} "
+    #     f"| stdbuf -oL grep --line-buffered \"{SERVER_PID}\" "
+    #     f"| stdbuf -oL awk '$1 == {SERVER_PID} {{print systime(), $0}}' > logs/top-output.txt\n".encode("utf-8"), 
+    #     get_pty=True)
+    # print("[SSH] top: Sent command.")
+    # stdin_vm, stdout, stderr = ssh.exec_command(
+    #     "stdbuf -oL vmstat -t 1 > logs/vmstat-output.txt\n".encode("utf-8"), 
+    #     get_pty=True)
+    # print("[SSH] vmstat: Sent command.")
+    
+    th_smem = threading.Thread(target=log_smem, args=(ssh, SERVER_PID))
+    th_vmstat = threading.Thread(target=log_vmstat, args=(ssh, SERVER_PID))
+    
+    th_smem.start()
+    th_vmstat.start()
     
     print("[Test] starting in 5 sec.")
     time.sleep(5)
+    
     main_test()
     print("[Test] finished.")
-    print("[SSH] Interrupting the log processes in 5 sec.")
+    
+    print("[SSH] Set a flag for stopping log in 5 sec and waiting to join.")
     time.sleep(5)
 
-    stdin_top.channel.send(b"\x03")
-    print("[SSH] top: Sent SIGINT.")
-    stdin_top.close()
-    stdin_vm.channel.send(b"\x03")
-    print("[SSH] vmstat: Sent SIGINT.")
-    stdin_vm.close()
+    # stdin_top.channel.send(b"\x03")
+    # print("[SSH] top: Sent SIGINT.")
+    # stdin_top.close()
+    # stdin_vm.channel.send(b"\x03")
+    # print("[SSH] vmstat: Sent SIGINT.")
+    # stdin_vm.close()
+    
+    end_log = True
+    th_smem.join()
+    th_vmstat.join()
 
-    print("[SSH] Getting the log files in 3 sec.")
-    time.sleep(3)
+    # print("[SSH] Getting the log files in 3 sec.")
+    # time.sleep(3)
 
-    sftp = ssh.open_sftp()
-    sftp.get("logs/top-output.txt", f"test_result/{THIS_TIME}_test_top_log.txt")
-    sftp.get("logs/vmstat-output.txt", f"test_result/{THIS_TIME}_test_vmstat_log.txt")
-    print("[SSH] Log files transferred.")
+    # sftp = ssh.open_sftp()
+    # sftp.get("logs/top-output.txt", f"test_result/{THIS_TIME}_test_top_log.txt")
+    # sftp.get("logs/vmstat-output.txt", f"test_result/{THIS_TIME}_test_vmstat_log.txt")
+    # print("[SSH] Log files transferred.")
 
 except Exception as e:
     print(f"[Error] {e.__class__.__name__}: {e}")
 
 finally:
-    if not stdin_top.closed:
-        stdin_top.channel.send(b"\x03")
-        print("[SSH] top: Sent SIGINT.")
-        stdin_top.close()
-    if not stdin_vm.closed:
-        stdin_vm.channel.send(b"\x03")
-        print("[SSH] vmstat: Sent SIGINT.")
-        stdin_vm.close()
+    # if not stdin_top.closed:
+    #     stdin_top.channel.send(b"\x03")
+    #     print("[SSH] top: Sent SIGINT.")
+    #     stdin_top.close()
+    # if not stdin_vm.closed:
+    #     stdin_vm.channel.send(b"\x03")
+    #     print("[SSH] vmstat: Sent SIGINT.")
+    #     stdin_vm.close()
 
-    if sftp is not None:
-        sftp.close()
+    # if sftp is not None:
+    #     sftp.close()
     if not stdin.closed:
         stdin.close()
     ssh.close()
