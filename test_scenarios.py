@@ -4,6 +4,7 @@ import requests
 import time
 import paramiko
 import threading
+import traceback
 from multiprocessing.pool import ThreadPool, AsyncResult
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 
@@ -33,8 +34,17 @@ wa = 디스크 등 IO작업으로 CPU가 대기하는 비율
 
 THIS_TIME = time.time_ns()
 
-ENDPOINT_SEARCH = "http://52.79.227.178:8080/api/search?query="
-ENDPOINT_UPLOAD = "http://52.79.227.178:8080/api/images"
+# ENDPOINT_SEARCH = "http://52.79.227.178:8080/api/search?query="
+# ENDPOINT_UPLOAD = "http://52.79.227.178:8080/api/images"
+
+USE_SCHEDULER = True
+
+if USE_SCHEDULER:
+    ENDPOINT_SEARCH = "http://127.0.0.1:8000/api/search/batch?query="
+    ENDPOINT_UPLOAD = "http://127.0.0.1:8000/api/upload/batch"
+else:
+    ENDPOINT_SEARCH = "http://127.0.0.1:8000/api/search?query="
+    ENDPOINT_UPLOAD = "http://127.0.0.1:8000/api/upload"
 
 # random.seed(1226)
 
@@ -46,6 +56,11 @@ for excluded_img in ["20250902_133843.jpg", "20250510_151332.jpg", "20250510_151
 test_img_list = list(filter(lambda x: os.path.getsize(os.path.join(TEST_IMG_DIR, x)) <= 10*1024*1024, test_img_list)) * 100
 random.shuffle(test_img_list)
 test_img_iter = iter(test_img_list)
+
+with open("test_images/output.txt", "r", encoding="utf-8") as f:
+    test_img_ids = list(map(lambda x: x.strip().split()[-1], f.readlines()))
+random.shuffle(test_img_ids)
+test_img_id_iter = iter(test_img_ids)
 
 text_list = """
 A man wearing a blue shirt
@@ -76,6 +91,18 @@ tasks: list[AsyncResult] = []
 results = []
 timer = SimpleTimer()
 
+# HOST = "ec2-3-38-180-4.ap-northeast-2.compute.amazonaws.com"
+# ID = "ubuntu"
+# # TODO: modify the path of private key by your local environment
+# KEY = paramiko.RSAKey.from_private_key_file(r"C:\Users\frien\Desktop\workplace\keys\ai-server.pem")
+
+# ssh = paramiko.SSHClient()
+# ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # WARN: On private PC only
+# ssh.connect(HOST, username=ID, pkey=KEY)
+# # sftp = None
+
+# print("[SSH] Connection held.")
+
 def init_scenario():
     global scenario_idx, task_idx, tasks
     scenario_idx += 1
@@ -94,21 +121,28 @@ def _search(query: str):
             return len(query), timer.t, et, response.status_code, response.content.decode('utf-8')
     except BaseException as e:
         et = timer.stop()
+        traceback.print_exception(e)
         return len(query), timer.t, 0, -1, f"{e.__class__.__name__}: {e}"
 
 def _upload(imgs: list[str]):
     try:
         timer = SimpleTimer()
         timer.start()
-        data = MultipartEncoder([("files", (img, open(os.path.join(TEST_IMG_DIR, img), "rb"), "image/jpeg")) for img in imgs])
+        # data = MultipartEncoder([("files", (img, open(os.path.join(TEST_IMG_DIR, img), "rb"), "image/jpeg")) for img in imgs])
         with requests.Session() as session:
-            response = session.post(ENDPOINT_UPLOAD, data=data, headers={"Content-Type": data.content_type})
+            # response = session.post(ENDPOINT_UPLOAD, data=data, headers={"Content-Type": data.content_type})
+            response = session.post(ENDPOINT_UPLOAD, json=imgs)
             et = timer.stop()
-            return sum(map(len, (open(os.path.join(TEST_IMG_DIR, img), "rb").read() for img in imgs))), \
+            # return sum(map(len, (open(os.path.join(TEST_IMG_DIR, img), "rb").read() for img in imgs))), \
+            #     timer.t, et, response.status_code, response.content.decode('utf-8')
+            return 0, \
                 timer.t, et, response.status_code, response.content.decode('utf-8')
     except BaseException as e:
         et = timer.stop()
-        return sum(map(len, (open(os.path.join(TEST_IMG_DIR, img), "rb").read() for img in imgs))), \
+        traceback.print_exception(e)
+        # return sum(map(len, (open(os.path.join(TEST_IMG_DIR, img), "rb").read() for img in imgs))), \
+        #     timer.t, 0, -1, f"{e.__class__.__name__}: {e}"
+        return 0, \
             timer.t, 0, -1, f"{e.__class__.__name__}: {e}"
 
 def search(pool: ThreadPool):
@@ -122,7 +156,8 @@ def search(pool: ThreadPool):
 def upload(pool: ThreadPool):
     global task_idx
     task_idx += 1
-    img = next(test_img_iter)
+    # img = next(test_img_iter)
+    img = next(test_img_id_iter)
     task = pool.apply_async(_upload, ([img],))
     tasks.append((task_idx, 'i', task))
     return task
@@ -189,6 +224,34 @@ def main_test():
     """
     각 시나리오 진행 후 다음 시나리오까지 5초간 대기
     """
+    
+    amount = [1, 5, 10, 20, 100]
+    for a in amount:
+        init_scenario()
+        with ThreadPool(a) as pool:
+            for _ in range(a):
+                upload(pool)
+            end_scenario()
+    
+    amount = [1, 5, 10, 20, 100]
+    for a in amount:
+        init_scenario()
+        with ThreadPool(a) as pool:
+            for _ in range(a):
+                search(pool)
+            end_scenario()
+
+    
+    amount = [1, 5, 10, 20, 100]
+    for a in amount:
+        init_scenario()
+        with ThreadPool(a*2) as pool:
+            for _ in range(a):
+                upload(pool)
+                search(pool)
+            end_scenario()
+
+    return
     
     """
     시나리오 1
@@ -264,8 +327,6 @@ def main_test():
             for _ in range(a):
                 upload(pool)
             end_scenario()
-    
-    return
 
     """
     시나리오 16-20
@@ -452,43 +513,19 @@ def summary_result():
             utime_str = f"({utime_count:>2d})  {utime_min:>8.4f} / {utime_sum/utime_count:>8.4f} / {utime_max:>8.4f} "
         print(f"{s_num:>9d} | {scenario_time:>16.4f} | {utime_str} | {stime_str}")
 
-
-HOST = "ec2-3-38-180-4.ap-northeast-2.compute.amazonaws.com"
-ID = "ubuntu"
-# TODO: modify the path of private key by your local environment
-KEY = paramiko.RSAKey.from_private_key_file(r"C:\Users\frien\Desktop\workplace\keys\ai-server.pem")
-
-ssh = paramiko.SSHClient()
-ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # WARN: On private PC only
-ssh.connect(HOST, username=ID, pkey=KEY)
-# sftp = None
-
-print("[SSH] Connection held.")
-
 try:
-    stdin, stdout, stderr = ssh.exec_command(b"sudo docker inspect -f \"{{.State.Pid}}\" ai-server\n", get_pty=True)
-    while not stdout.channel.exit_status_ready():
-        time.sleep(0.1)
+    # stdin, stdout, stderr = ssh.exec_command(b"sudo docker inspect -f \"{{.State.Pid}}\" ai-server\n", get_pty=True)
+    # while not stdout.channel.exit_status_ready():
+    #     time.sleep(0.1)
 
-    SERVER_PID = int(stdout.read().strip())
-    print(f"[SSH] SERVER_PID = {SERVER_PID}")
+    # SERVER_PID = int(stdout.read().strip())
+    # print(f"[SSH] SERVER_PID = {SERVER_PID}")
     
-    # stdin_top, stdout, stderr = ssh.exec_command(
-    #     f"stdbuf -oL top -b -n 3600 -d 1 -p {SERVER_PID} "
-    #     f"| stdbuf -oL grep --line-buffered \"{SERVER_PID}\" "
-    #     f"| stdbuf -oL awk '$1 == {SERVER_PID} {{print systime(), $0}}' > logs/top-output.txt\n".encode("utf-8"), 
-    #     get_pty=True)
-    # print("[SSH] top: Sent command.")
-    # stdin_vm, stdout, stderr = ssh.exec_command(
-    #     "stdbuf -oL vmstat -t 1 > logs/vmstat-output.txt\n".encode("utf-8"), 
-    #     get_pty=True)
-    # print("[SSH] vmstat: Sent command.")
+    # th_smem = threading.Thread(target=log_smem, args=(ssh, SERVER_PID))
+    # th_vmstat = threading.Thread(target=log_vmstat, args=(ssh, SERVER_PID))
     
-    th_smem = threading.Thread(target=log_smem, args=(ssh, SERVER_PID))
-    th_vmstat = threading.Thread(target=log_vmstat, args=(ssh, SERVER_PID))
-    
-    th_smem.start()
-    th_vmstat.start()
+    # th_smem.start()
+    # th_vmstat.start()
     
     print("[Test] starting in 5 sec.")
     time.sleep(5)
@@ -497,46 +534,20 @@ try:
     summary_result()
     print("[Test] finished.")
     
-    print("[SSH] Set a flag for stopping log in 5 sec and waiting to join.")
-    time.sleep(5)
-
-    # stdin_top.channel.send(b"\x03")
-    # print("[SSH] top: Sent SIGINT.")
-    # stdin_top.close()
-    # stdin_vm.channel.send(b"\x03")
-    # print("[SSH] vmstat: Sent SIGINT.")
-    # stdin_vm.close()
+    # print("[SSH] Set a flag for stopping log in 5 sec and waiting to join.")
+    # time.sleep(5)
     
-    end_log = True
-    th_smem.join()
-    th_vmstat.join()
-
-    # print("[SSH] Getting the log files in 3 sec.")
-    # time.sleep(3)
-
-    # sftp = ssh.open_sftp()
-    # sftp.get("logs/top-output.txt", f"test_result/{THIS_TIME}_test_top_log.txt")
-    # sftp.get("logs/vmstat-output.txt", f"test_result/{THIS_TIME}_test_vmstat_log.txt")
-    # print("[SSH] Log files transferred.")
+    # end_log = True
+    # th_smem.join()
+    # th_vmstat.join()
 
 except Exception as e:
     print(f"[Error] {e.__class__.__name__}: {e}")
 
 finally:
-    # if not stdin_top.closed:
-    #     stdin_top.channel.send(b"\x03")
-    #     print("[SSH] top: Sent SIGINT.")
-    #     stdin_top.close()
-    # if not stdin_vm.closed:
-    #     stdin_vm.channel.send(b"\x03")
-    #     print("[SSH] vmstat: Sent SIGINT.")
-    #     stdin_vm.close()
+    # if not stdin.closed:
+    #     stdin.close()
+    # ssh.close()
 
-    # if sftp is not None:
-    #     sftp.close()
-    if not stdin.closed:
-        stdin.close()
-    ssh.close()
-
-    print("[SSH] Connection closed.")
-
+    # print("[SSH] Connection closed.")
+    pass
