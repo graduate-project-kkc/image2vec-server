@@ -264,6 +264,8 @@ def main_test():
             for _ in range(a):
                 upload(pool)
             end_scenario()
+    
+    return
 
     """
     시나리오 16-20
@@ -401,8 +403,8 @@ def main_test():
                     search(pool)
                 time.sleep(it)
             end_scenario()
-        
 
+def summary_result():
     # Print for analyze with ipynb program
     with open(f"test_result/{THIS_TIME}_test_local_log.txt", "w", encoding="utf-8") as f:
         t_num = 1
@@ -492,6 +494,7 @@ try:
     time.sleep(5)
     
     main_test()
+    summary_result()
     print("[Test] finished.")
     
     print("[SSH] Set a flag for stopping log in 5 sec and waiting to join.")
