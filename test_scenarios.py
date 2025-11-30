@@ -152,6 +152,18 @@ def _upload(imgs: list[str]):
         return sum(map(len, (open(os.path.join(TEST_IMG_DIR, img), "rb").read() for img in imgs))), \
             timer.t, 0, -1, f"{e.__class__.__name__}: {e}"
 
+def _upload_only_id(imgs: list[str]):
+    try:
+        timer = SimpleTimer()
+        timer.start()
+        with requests.Session() as session:
+            response = session.post(ENDPOINT_UPLOAD, data=imgs)
+            et = timer.stop()
+            return 0, timer.t, et, response.status_code, response.content.decode('utf-8')
+    except BaseException as e:
+        et = timer.stop()
+        return 0, timer.t, 0, -1, f"{e.__class__.__name__}: {e}"
+
 def search(pool: ThreadPool):
     global task_idx
     task_idx += 1
