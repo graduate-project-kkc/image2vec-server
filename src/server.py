@@ -96,7 +96,7 @@ def api_upload_image(image_ids: list[str] = Body(...)):
 @app.get("/api/search")
 @app.get("/api/search/text")
 def api_search_text(query: str):
-    logger.info("====== /api/search ======", extra={"color_message": f"====== {click.style('/api/search', bold=True)} ======"})
+    logger.info(f"[{threading.get_ident()}] ====== /api/search ======", extra={"color_message": f"[{threading.get_ident()}] ====== {click.style('/api/search', bold=True)} ======"})
     try:
         timer = SimpleTimer()
         timer.start()
@@ -114,8 +114,8 @@ def api_search_text(query: str):
 
 @app.post("/api/search/image")
 async def api_search_image(file: UploadFile = File(...)):
-    logger.info("====== /api/search/image ======", extra={
-        "color_message": f"====== {click.style('/api/search/image', bold=True)} ======"
+    logger.info(f"[{threading.get_ident()}] ====== /api/search/image ======", extra={
+        "color_message": f"[{threading.get_ident()}] ====== {click.style('/api/search/image', bold=True)} ======"
     })
 
     try:
@@ -135,12 +135,12 @@ async def api_search_image(file: UploadFile = File(...)):
         ] + ["... "] + [f"{feature[-1]:.3f}"])
 
         logger.info(
-            f"Response image vector : \"{file.filename}\" => (Success, {elapsed:.3f} sec) [{feature_string}]"
+            f"[{threading.get_ident()}] Response image vector : \"{file.filename}\" => (Success, {elapsed:.3f} sec) [{feature_string}]"
         )
 
         return JSONResponse(content=resp_json)
 
     except Exception as e:
         resp_json = {"status": "failed", "error_msg": f"{type(e)}: {e}"}
-        logger.info(f"Response image vector : \"{file.filename}\" => (Failed) {resp_json['error_msg']}")
+        logger.info(f"[{threading.get_ident()}] Response image vector : \"{file.filename}\" => (Failed) {resp_json['error_msg']}")
         return JSONResponse(content=resp_json)
