@@ -7,7 +7,7 @@ import threading
 from uvicorn.logging import AccessFormatter, DefaultFormatter
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Body
+from fastapi import FastAPI, Body, UploadFile
 from fastapi.responses import JSONResponse
 
 from .core import Model
@@ -94,8 +94,9 @@ def api_upload_image(image_ids: list[str] = Body(...)):
     return JSONResponse(content=resp_json)
 
 @app.get("/api/search")
-def api_search(query: str):
-    logger.info(f"[{threading.get_ident()}] ====== /api/search ======", extra={"color_message": f"[{threading.get_ident()}] ====== {click.style('/api/search', bold=True)} ======"})
+@app.get("/api/search/text")
+def api_search_text(query: str):
+    logger.info("====== /api/search ======", extra={"color_message": f"====== {click.style('/api/search', bold=True)} ======"})
     try:
         timer = SimpleTimer()
         timer.start()
@@ -109,4 +110,37 @@ def api_search(query: str):
     except Exception as e:
         resp_json = {"status": "failed", "error_msg": f"{type(e)}: {e}"}
         logger.info(f"[{threading.get_ident()}] Response text vector : \"{query}\" => (Failed) {resp_json['error_msg']}")
+        return JSONResponse(content=resp_json)
+
+@app.post("/api/search/image")
+async def api_search_image(file: UploadFile = File(...)):
+    logger.info("====== /api/search/image ======", extra={
+        "color_message": f"====== {click.style('/api/search/image', bold=True)} ======"
+    })
+
+    try:
+        timer = SimpleTimer()
+        timer.start()
+
+        image_bytes = await file.read()
+
+        feature = model.get_image_vector(image_bytes)
+        feature = feature.reshape((-1,)).tolist()
+
+        resp_json = {"status": "success", "vector": feature}
+
+        elapsed = timer.stop()
+        feature_string = ", ".join([
+            f"{v:.3f}" for v in (feature[0], feature[1], feature[2])
+        ] + ["... "] + [f"{feature[-1]:.3f}"])
+
+        logger.info(
+            f"Response image vector : \"{file.filename}\" => (Success, {elapsed:.3f} sec) [{feature_string}]"
+        )
+
+        return JSONResponse(content=resp_json)
+
+    except Exception as e:
+        resp_json = {"status": "failed", "error_msg": f"{type(e)}: {e}"}
+        logger.info(f"Response image vector : \"{file.filename}\" => (Failed) {resp_json['error_msg']}")
         return JSONResponse(content=resp_json)
