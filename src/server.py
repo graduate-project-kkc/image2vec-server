@@ -7,7 +7,7 @@ import threading
 from uvicorn.logging import AccessFormatter, DefaultFormatter
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Body, UploadFile
+from fastapi import FastAPI, Body, UploadFile, File
 from fastapi.responses import JSONResponse
 
 from .core import Model
