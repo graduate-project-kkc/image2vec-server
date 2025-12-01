@@ -37,8 +37,8 @@ class PineconeDB():
         
         self.index = pc.Index(name=INDEX_NAME)
 
-    def count(self, username: str):
-        return self.index.describe_index_stats()[username]['vector_count']
+    def count(self, username: str = ""):
+        return self.index.describe_index_stats().get(username, default={'vector_count': 0})['vector_count']
 
     # def push(self, filename: str, data: bytes, feature_vector: torch.FloatTensor):
     def push(self, username: str, filename: str, feature_vector: torch.FloatTensor):

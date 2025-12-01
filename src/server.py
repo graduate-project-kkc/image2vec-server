@@ -7,12 +7,13 @@ import threading
 from uvicorn.logging import AccessFormatter, DefaultFormatter
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Body, UploadFile, File
+from fastapi import FastAPI, Request, Body, UploadFile, File
 from fastapi.responses import JSONResponse
 
 from .core import Model
 from .pincone_db import PineconeDB, API_KEY, ENVIRONMENT, INDEX_NAME
 from .timer import SimpleTimer
+from .dto import CountRequest, UploadImageRequest
 
 
 logger = logging.getLogger()
@@ -67,15 +68,17 @@ def upload_to_db(user_id, image_id):
     return {"image_id": image_id, "status": "success"}
 
 @app.get("/api/count")
-def api_get_uploaded_images():
+def api_get_uploaded_images(item: CountRequest):
     logger.info(f"[{threading.get_ident()}] ====== /api/count ======", extra={"color_message": f"[{threading.get_ident()}] ====== {click.style('/api/count', bold=True)} ======"})
-    content = {"count": db.count()}
+    content = {"count": db.count(item.userId)}
     logger.info(f"[{threading.get_ident()}] VecDB count = {content['count']}")
     return JSONResponse(content=content)
 
 @app.post("/api/upload")
-def api_upload_image(user_id: str, image_ids: list[str] = Body(...)):
+def api_upload_image(item: UploadImageRequest):
     logger.info(f"[{threading.get_ident()}] ====== /api/upload ======", extra={"color_message": f"[{threading.get_ident()}] ====== {click.style('/api/upload', bold=True)} ======"})
+    user_id = item.userId
+    image_ids = item.imageIds
     resp_json = {"status": {"success": 0, "failed": 0}, "results": []}
     timer = SimpleTimer()
     timer.start()
