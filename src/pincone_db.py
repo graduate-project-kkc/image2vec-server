@@ -37,11 +37,11 @@ class PineconeDB():
         
         self.index = pc.Index(name=INDEX_NAME)
 
-    def count(self):
-        return self.index.describe_index_stats()['total_vector_count']
+    def count(self, username: str):
+        return self.index.describe_index_stats()[username]['vector_count']
 
     # def push(self, filename: str, data: bytes, feature_vector: torch.FloatTensor):
-    def push(self, filename: str, feature_vector: torch.FloatTensor):
+    def push(self, username: str, filename: str, feature_vector: torch.FloatTensor):
         if feature_vector.size(dim=1) != 768:
             raise ValueError("The given feature vector's shape is incorrect.")
 
@@ -50,15 +50,15 @@ class PineconeDB():
 
         # 인덱싱
         
-        return self.index.upsert([(filename, vector)])
+        return self.index.upsert([(filename, vector)], namespace=username)
 
 
-    def search(self, text_features: torch.FloatTensor):
+    def search(self, username: str, text_features: torch.FloatTensor):
         if text_features.size(dim=1) != 768:
             raise ValueError("The given feature vector's shape is incorrect.")
         text_features = text_features / text_features.norm(p=2, dim=-1, keepdim=True)
         vector = text_features.squeeze().tolist()
-        result = self.index.query(vector=vector, top_k=10, include_values=True)
+        result = self.index.query(vector=vector, top_k=10, include_values=True, namespace=username)
 
         # Pinecone는 id와 score를 제공함
         return [(match['score'], match['id'])

@@ -7,7 +7,7 @@ import threading
 from uvicorn.logging import AccessFormatter, DefaultFormatter
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Body
+from fastapi import FastAPI, Body, UploadFile, File
 from fastapi.responses import JSONResponse
 
 from .core import Model
@@ -44,7 +44,7 @@ db = PineconeDB(API_KEY, ENVIRONMENT, INDEX_NAME)
 s3_URL = os.getenv("S3_URL")
 SPECIAL_KEY = os.getenv("SPECIAL_KEY")  # Temporary authentication key
 
-def upload_to_db(image_id):
+def upload_to_db(user_id, image_id):
     timer = SimpleTimer()
     timer.start()
     with requests.get(s3_URL + image_id) as response:
@@ -59,7 +59,7 @@ def upload_to_db(image_id):
     logger.info(f"[{threading.get_ident()} - Upload] Computed feature vector of {image_id} ({elapsed:.3f} sec)")
     timer.start()
     try:
-        db.push(image_id, vector)
+        db.push(user_id, image_id, vector)
     except ValueError as e:
         return {"image_id": image_id, "status": "failed", "error_msg": f"{type(e)}: {e}"}
     elapsed = timer.stop()
@@ -74,7 +74,7 @@ def api_get_uploaded_images():
     return JSONResponse(content=content)
 
 @app.post("/api/upload")
-def api_upload_image(image_ids: list[str] = Body(...)):
+def api_upload_image(user_id: str, image_ids: list[str] = Body(...)):
     logger.info(f"[{threading.get_ident()}] ====== /api/upload ======", extra={"color_message": f"[{threading.get_ident()}] ====== {click.style('/api/upload', bold=True)} ======"})
     resp_json = {"status": {"success": 0, "failed": 0}, "results": []}
     timer = SimpleTimer()
@@ -82,7 +82,7 @@ def api_upload_image(image_ids: list[str] = Body(...)):
     subtimer = SimpleTimer()
     for image_id in image_ids:
         subtimer.start()
-        result = upload_to_db(image_id)
+        result = upload_to_db(user_id, image_id)
         elapsed = subtimer.stop()
         logger.info(f"[{threading.get_ident()}] Uploaded {image_id} to VecDB : {result.get('error_msg', 'Success')} ({elapsed:.3f} sec)")
         resp_json["results"].append(result)
@@ -94,7 +94,8 @@ def api_upload_image(image_ids: list[str] = Body(...)):
     return JSONResponse(content=resp_json)
 
 @app.get("/api/search")
-def api_search(query: str):
+@app.get("/api/search/text")
+def api_search_text(query: str):
     logger.info(f"[{threading.get_ident()}] ====== /api/search ======", extra={"color_message": f"[{threading.get_ident()}] ====== {click.style('/api/search', bold=True)} ======"})
     try:
         timer = SimpleTimer()
@@ -109,4 +110,37 @@ def api_search(query: str):
     except Exception as e:
         resp_json = {"status": "failed", "error_msg": f"{type(e)}: {e}"}
         logger.info(f"[{threading.get_ident()}] Response text vector : \"{query}\" => (Failed) {resp_json['error_msg']}")
+        return JSONResponse(content=resp_json)
+
+@app.post("/api/search/image")
+async def api_search_image(file: UploadFile = File(...)):
+    logger.info(f"[{threading.get_ident()}] ====== /api/search/image ======", extra={
+        "color_message": f"[{threading.get_ident()}] ====== {click.style('/api/search/image', bold=True)} ======"
+    })
+
+    try:
+        timer = SimpleTimer()
+        timer.start()
+
+        image_bytes = await file.read()
+
+        feature = model.get_image_vector(image_bytes)
+        feature = feature.reshape((-1,)).tolist()
+
+        resp_json = {"status": "success", "vector": feature}
+
+        elapsed = timer.stop()
+        feature_string = ", ".join([
+            f"{v:.3f}" for v in (feature[0], feature[1], feature[2])
+        ] + ["... "] + [f"{feature[-1]:.3f}"])
+
+        logger.info(
+            f"[{threading.get_ident()}] Response image vector : \"{file.filename}\" => (Success, {elapsed:.3f} sec) [{feature_string}]"
+        )
+
+        return JSONResponse(content=resp_json)
+
+    except Exception as e:
+        resp_json = {"status": "failed", "error_msg": f"{type(e)}: {e}"}
+        logger.info(f"[{threading.get_ident()}] Response image vector : \"{file.filename}\" => (Failed) {resp_json['error_msg']}")
         return JSONResponse(content=resp_json)
